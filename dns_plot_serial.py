@@ -5,6 +5,8 @@ from mayavi import mlab
 from basic_units import radians,degrees,cos
 from radians_plot import *
 
+# TODO make plot script dynamical - change depending on # of cores used.
+
 #X = mgrid[rank * Np:(rank + 1) * Np, :N, :N].astype(float) * 2 * pi / N
 #U = empty((3, Np, N, N),dtype=float32)
 with open('X.pkl', 'rb') as g:
