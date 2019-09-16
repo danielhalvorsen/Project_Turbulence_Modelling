@@ -133,3 +133,13 @@ with open('U'+'.pkl','wb') as f:
 with open('X.pkl', 'wb') as g:
     pickle.dump([X_gathered], g)
 
+
+
+
+
+
+
+
+
+
+
