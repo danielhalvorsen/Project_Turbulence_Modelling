@@ -67,6 +67,17 @@ ax.yaxis.set_major_formatter(plt.FuncFormatter(multiple_formatter()))
 plt.show()
 
 
+with open('animate_U_x_'+str(0)+'.pkl', 'rb') as i:
+    U_0= pickle.load(i)
+with open('animate_U_x_'+str(1)+'.pkl', 'rb') as j:
+    U_1= pickle.load(j)
+with open('animate_U_x_'+str(2)+'.pkl', 'rb') as k:
+    U_2= pickle.load(k)
+with open('animate_U_x_'+str(3)+'.pkl', 'rb') as l:
+    U_3= pickle.load(l)
+print(np.shape(U_0))
+
+U_anim = concatenate([U_0,U_1,U_2,U_3],axis=2)
 
 fig = plt.figure()
 # ims is a list of lists, each row is a list of artists to draw in the

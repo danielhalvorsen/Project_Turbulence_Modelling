@@ -8,10 +8,10 @@ from tqdm import tqdm
 # U is set to dtype float32
 # Reynoldsnumber determined by nu Re = 1600, nu = 1/1600
 nu = 0.000625
-#nu = 0.00000625
-T = 1
-dt = 0.01
-N = int(2 ** 7)
+# nu = 0.00000625
+T = 20
+dt = 0.1
+N = int(2 ** 6)
 N_half = int(N / 2 + 1)
 comm = MPI.COMM_WORLD
 num_processes = comm.Get_size()
@@ -121,8 +121,8 @@ while t < T - 1e-8:
     for i in range(3):
         # Inverse Fourier transform after RK4 algorithm
         U[i] = ifftn_mpi(U_hat[i], U[i])
-    #if save_animation == True and tstep % save_nr == 0:
-        # Save the animation every "save_nr" time step
+    # if save_animation == True and tstep % save_nr == 0:
+    # Save the animation every "save_nr" time step
     animate_U_x[tstep] = U[0].copy()
     tstep += 1
     pbar.update(1)
@@ -137,7 +137,8 @@ pbar.close()
 U_gathered = comm.gather(U, root=0)
 X_gathered = comm.gather(X, root=0)
 
-animate_U_x_T = animate_U_x.transpose((0,3,2,1))
+animate_U_x_T = animate_U_x.transpose((0, 3, 2, 1))
+animate_save_T = [animate_U_x_T[i][int(N / 2)] for i in range(len(animate_U_x_T))]
 
 with open('U' + '.pkl', 'wb') as f:
     pickle.dump([U_gathered], f)
@@ -145,7 +146,7 @@ with open('U' + '.pkl', 'wb') as f:
 with open('X.pkl', 'wb') as g:
     pickle.dump([X_gathered], g)
 
-if save_animation==True:
- #   animate_U_x_gather = comm.gather(animate_U_x, root=0)
-    with open('animate_U_x_'+str(rank)+'.pkl', 'wb') as h:
-        pickle.dump([animate_U_x], h)
+if save_animation == True:
+    #   animate_U_x_gather = comm.gather(animate_U_x, root=0)
+    with open('animate_U_x_' + str(rank) + '.pkl', 'wb') as h:
+        pickle.dump([animate_save_T], h)
