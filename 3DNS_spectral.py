@@ -9,8 +9,8 @@ from tqdm import tqdm
 # Reynoldsnumber determined by nu Re = 1600, nu = 1/1600
 # nu = 0.000625
 nu = 0.00000625
-T = 1
-dt = 0.1
+T = 20
+dt = 0.01
 N = int(2 ** 6)
 N_half = int(N / 2 + 1)
 comm = MPI.COMM_WORLD
