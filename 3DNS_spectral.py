@@ -7,11 +7,11 @@ from tqdm import tqdm
 
 # U is set to dtype float32
 # Reynoldsnumber determined by nu Re = 1600, nu = 1/1600
-# nu = 0.000625
-nu = 0.00000625
-T = 20
+nu = 0.000625
+#nu = 0.00000625
+T = 1
 dt = 0.01
-N = int(2 ** 6)
+N = int(2 ** 7)
 N_half = int(N / 2 + 1)
 comm = MPI.COMM_WORLD
 num_processes = comm.Get_size()
@@ -30,7 +30,8 @@ Uc_hat = empty((N, Np, N_half), dtype=complex)
 Uc_hatT = empty((Np, N, N_half), dtype=complex)
 U_mpi = empty((num_processes, Np, Np, N_half), dtype=complex)
 curl = empty((3, Np, N, N))
-animate_U_x = empty((int(T / dt), Np, N,N), dtype=float32)
+animate_U_x = empty((int(T / dt), Np, N, N), dtype=float32)
+save_animation = True
 kx = fftfreq(N, 1. / N)
 kz = kx[:(N_half)].copy();
 kz[-1] *= -1
@@ -104,6 +105,7 @@ for i in range(3):
 # Time integral using a Runge Kutta scheme
 t = 0.0
 tstep = 0
+save_nr = 1
 mid_idx = int(N / 2)
 pbar = tqdm(total=int(T / dt))
 while t < T - 1e-8:
@@ -111,12 +113,16 @@ while t < T - 1e-8:
     t += dt;
     U_hat1[:] = U_hat0[:] = U_hat
     for rk in range(4):
+        # Run RK4 temporal integral method
         dU = computeRHS(dU, rk)
         if rk < 3: U_hat[:] = U_hat0 + b[rk] * dt * dU
         U_hat1[:] += a[rk] * dt * dU
     U_hat[:] = U_hat1[:]
     for i in range(3):
+        # Inverse Fourier transform after RK4 algorithm
         U[i] = ifftn_mpi(U_hat[i], U[i])
+    #if save_animation == True and tstep % save_nr == 0:
+        # Save the animation every "save_nr" time step
     animate_U_x[tstep] = U[0].copy()
     tstep += 1
     pbar.update(1)
@@ -127,11 +133,11 @@ k = comm.reduce(0.5 * sum(U * U) * (1. / N) ** 3)
 pbar.close()
 
 # Gather the scattered data and store into two variables, X and U.
-
+# Root is rank of receiving process (core 1)
 U_gathered = comm.gather(U, root=0)
 X_gathered = comm.gather(X, root=0)
-animate_U_x_gather = comm.gather(animate_U_x,root=0)
-# root is rank of receiving process (core 1)
+
+animate_U_x_T = animate_U_x.transpose((0,3,2,1))
 
 with open('U' + '.pkl', 'wb') as f:
     pickle.dump([U_gathered], f)
@@ -139,5 +145,7 @@ with open('U' + '.pkl', 'wb') as f:
 with open('X.pkl', 'wb') as g:
     pickle.dump([X_gathered], g)
 
-with open('animate_U_x.pkl', 'wb') as h:
-    pickle.dump([animate_U_x_gather], h)
+if save_animation==True:
+ #   animate_U_x_gather = comm.gather(animate_U_x, root=0)
+    with open('animate_U_x_'+str(rank)+'.pkl', 'wb') as h:
+        pickle.dump([animate_U_x], h)
