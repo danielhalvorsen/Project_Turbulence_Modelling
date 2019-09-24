@@ -8,10 +8,10 @@ import scipy.integrate as integrate
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-nu = 1e-5
+nu = 1e-4
 
 L = np.pi
-N = int(256)
+N = int(128)
 N2 = int(N ** 2)
 dx = 2 * L / N
 mesh = np.mgrid[:N, :N] * 2 * L / N
@@ -25,15 +25,14 @@ ky = kx.copy()
 K = np.array(np.meshgrid(kx, ky), dtype=int)
 Kx = K[0]
 Ky = K[1]
-# K2 = kx**2+ky**2
 K2 = np.sum(K * K, 0, dtype=int)
-# K2_inv = np.zeros(len(K2))
-# K2_inv[K2~=0] =
 K2_inv = 1 / np.where(K2 == 0, 1, K2).astype(float)
+Dx = 1j * Kx * K2_inv
+Dy = 1j * Ky * K2_inv
 
 t0 = 0
-t_end = 2
-dt = 0.001
+t_end = 6
+dt = 0.1
 t = np.linspace(t0,t_end,np.ceil(t_end/dt))
 
 #np.random.seed(seed=MT19937)
@@ -44,13 +43,7 @@ omega_hat[2,2] = np.random.rand(1)+1j*np.random.rand(1)
 omega_hat[4,1] = np.random.rand(1)+1j*np.random.rand(1)
 omega = np.real(np.fft.ifft2(omega_hat))
 omega = omega/np.max(omega)
-#plt.contourf(omega,levels=300)
-#plt.show()
-
-
 omega_vector = np.reshape(omega, N2, 1)
-Dx = 1j * Kx * K2_inv
-Dy = 1j * Ky * K2_inv
 
 
 def Rhs(t, omega_vector):
