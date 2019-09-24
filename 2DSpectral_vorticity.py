@@ -31,7 +31,7 @@ Dx = 1j * Kx * K2_inv
 Dy = 1j * Ky * K2_inv
 
 t0 = 0
-t_end = 6
+t_end = 4
 dt = 0.1
 t = np.linspace(t0,t_end,np.ceil(t_end/dt))
 
@@ -39,6 +39,9 @@ t = np.linspace(t0,t_end,np.ceil(t_end/dt))
 omega = np.zeros([N,N])
 omega_hat = np.fft.fft2(omega)
 omega_hat[1,5] = np.random.rand(1)+1j*np.random.rand(1)
+#omega_hat[2,5] = np.random.rand(1)+1j*np.random.rand(1)
+#omega_hat[5,2] = np.random.rand(1)+1j*np.random.rand(1)
+#omega_hat[10,10] = np.random.rand(1)+1j*np.random.rand(1)
 omega_hat[2,2] = np.random.rand(1)+1j*np.random.rand(1)
 omega_hat[4,1] = np.random.rand(1)+1j*np.random.rand(1)
 omega = np.real(np.fft.ifft2(omega_hat))
@@ -63,7 +66,7 @@ def Rhs(t, omega_vector):
 #step = 1
 #pbar = tqdm(total = int(t_end/dt))
 #while step<=numsteps:
-solve = integrate.solve_ivp(Rhs, [0, t_end], omega_vector, method='RK45')#,rtol=1e-6,atol=1e-6)
+solve = integrate.solve_ivp(Rhs, [0, t_end], omega_vector, method='RK45',rtol=1e-8,atol=1e-8)
 #omega_vector = solve.y[:,1]
 omega = np.reshape(solve.y[:,-1], ([N, N]))
 

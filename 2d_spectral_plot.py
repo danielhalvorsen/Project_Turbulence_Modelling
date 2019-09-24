@@ -22,7 +22,7 @@ fig = plt.figure()
 # each frame
 ims = []
 for i in range(len(solve_matrix.y[0])):
-    if i%3==0:
+    if i%1==0:
         print('Appending image nr: '+str(i))
         omega_vector = solve_matrix.y[:, i]
         omega = np.reshape(omega_vector, ([N, N]))
@@ -43,7 +43,7 @@ plt.xlim(0,N)
 plt.ylim(0,N)
 plt.xlabel('x [m]')
 plt.ylabel('y [m]')
-plt.axes().set_aspect('equal')
+#plt.axes().set_aspect('equal')
 
 ani = animation.ArtistAnimation(fig, ims, interval=200, blit=True,
                                 repeat_delay=None)
