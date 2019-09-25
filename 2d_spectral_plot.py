@@ -4,6 +4,8 @@ import numpy as np
 import matplotlib.animation as animation
 import types
 
+from matplotlib.cm import ScalarMappable
+
 with open('solve_matrix.pkl', 'rb') as f:
     solve= pickle.load(f)
 solve_matrix=solve[0]
@@ -36,8 +38,8 @@ for i in range(len(solve_matrix.y[0])):
         ims.append([im])
 
 cbar = plt.colorbar(im)
-cbar.set_clim(min_val,max_val)
-cbar.set_ticks(np.linspace(min_val,max_val,10))
+#ScalarMappable.set_clim(min_val,max_val)
+#cbar.set_ticks(np.linspace(min_val,max_val,10))
 cbar.set_label('Vorticity magnitude [m/s]')
 plt.xlim(0,N)
 plt.ylim(0,N)
