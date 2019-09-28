@@ -13,11 +13,12 @@ max_val = solve_matrix.y.max()
 min_val = solve_matrix.y.min()
 print(max_val)
 N=int(np.sqrt(len(solve_matrix.y[:,-1])))
-#omega_vector = solve_matrix.y[:,-1]
-#omega = np.reshape(omega_vector, ([N, N]))
+omega_vector = solve_matrix.y[:,-1]
+omega = np.reshape(omega_vector, ([N, N]))
 
-#plt.contourf(omega,levels=500)
-
+plt.contourf(omega,levels=30,cmap='jet')
+cbar = plt.colorbar()
+'''
 fig = plt.figure()
 # ims is a list of lists, each row is a list of artists to draw in the
 # current frame; here we are just animating one artist, the image, in
@@ -54,3 +55,6 @@ ani = animation.ArtistAnimation(fig, ims, interval=200, blit=True,
 ani.save('animation.gif', writer='imagemagick')
 
 plt.show()
+
+'''
+
