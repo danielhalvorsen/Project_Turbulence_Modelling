@@ -11,6 +11,6 @@ Preliminary isotropic turbulence using N=64, Re=160K. Re will be lowered and num
 
 
 <p align="center">
-  <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/VorticityAnimation.avi">
+  <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/VorticityAnimation.gif">
 </p>
 Two dimensional Navier Stokes, magnitude of vorticity, N=256, Re=10k.
