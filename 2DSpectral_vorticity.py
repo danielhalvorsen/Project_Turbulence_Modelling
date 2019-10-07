@@ -91,14 +91,20 @@ def Rhs(t, omega_vector):  # change order of arguments for different ode solver
     Rhs = np.reshape(rhs, N2, 1)
     return Rhs
 
-
+def writeToFile(solve):
+    print('Writing files... ')
+    np.savetxt('dt_vector.txt',solve.t)
+    np.savetxt('omega_vector_matrix.txt', solve.y)
+    # read with: new_data = np.loadtxt('test.txt')
+    print('Finished writing files.')
+    return
 ####################################################################################################
 ####################################################################################################
 
 # Base constants and spatial grid vectors
 nu = 1e-4
 L = np.pi
-N = int(128)
+N = int(256)
 N2 = int(N ** 2)
 dx = 2 * L / N
 x = np.linspace(1 - N / 2, N / 2, N) * dx
@@ -123,7 +129,7 @@ dealias = np.array(
 
 # Temporal
 t0 = 0
-t_end = 10
+t_end = 20
 dt = 0.1
 # t = np.linspace(t0, t_end, np.ceil(t_end / dt))
 
@@ -187,4 +193,5 @@ if (animateOmega or animateVelocity) == True:
 if (animateVelocity and animateOmega) == False:
     solve = integrate.solve_ivp(Rhs, [0, t_end], omega_vector, method='RK45', rtol=1e-10,
                                 atol=1e-10)
+    writeToFile(solve)
 print('finished')
