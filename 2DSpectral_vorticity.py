@@ -4,16 +4,20 @@ import numpy as np
 import pickle
 from numpy.fft import fftfreq, fft, ifft, irfft2, rfft2
 import random
-from numpy.random import seed,uniform
+from numpy.random import seed, uniform
 import scipy.integrate as integrate
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import matplotlib.animation as animation
+
+global u, v
 
 
 ####################################################################################################
 ####################################################################################################
 
-def init(omega_grid):
+def init_Omega(omega_grid):
+    # Set initial condition on the Omega vector in Fourier space
     seed(1969)
     omega_hat = np.fft.fft2(omega_grid)
     omega_hat[0, 4] = uniform() + 1j * uniform()
@@ -27,16 +31,61 @@ def init(omega_grid):
     return reshaped_omega_IC
 
 
-def Rhs(t, omega_vector): #change order of arguments for different ode solver
+def initialize(choice):
+    # Set initial condition on the velocity vectors.
+    if choice == 'random':
+        u = np.array([[random.random() for i in range(N)] for j in range(N)])
+        v = np.array([[random.random() for i in range(N)] for j in range(N)])
+        u_hat = np.fft.fft2(u)
+        v_hat = np.fft.fft2(v)
+        omega_hat = (v_hat * Kx) - (u_hat * Ky)
+        omega = np.real(np.fft.ifft2(omega_hat))
+        omega = omega / np.max(omega)
+        omega_vector = np.reshape(omega, N2, 1)
+    if choice == 'circle':
+        x = np.arange(0, N)
+        y = np.arange(0, N)
+        u = np.ones((y.size, x.size)) * -1
+        v = np.ones((y.size, x.size)) * -1
+        cx = N / 2
+        cy = N / 2
+        r = int(N / 10)
+        # The two lines below could be merged, but I stored the mask
+        # for code clarity.
+        mask = (x[np.newaxis, :] - cx) ** 2 + (y[:, np.newaxis] - cy) ** 2 < r ** 2
+        u[mask] = 100
+        v[mask] = -100
+        u_hat = np.fft.fft2(u)
+        v_hat = np.fft.fft2(v)
+        omega_hat = ((v_hat * Kx) - (u_hat * Ky)) * 1j
+        omega = np.real(np.fft.ifft2(omega_hat))
+        omega = omega / np.max(omega)
+        omega_vector = np.reshape(omega, N2, 1)
+    if choice == 'omega_1':
+        seed(1969)
+        omega_grid = np.zeros([N, N])
+        omega_hat = np.fft.fft2(omega_grid)
+        omega_hat[0, 4] = uniform() + 1j * uniform()
+        omega_hat[1, 1] = uniform() + 1j * uniform()
+        omega_hat[3, 0] = uniform() + 1j * uniform()
+        # print(omega_hat)
+        omega = np.real(np.fft.ifft2(omega_hat))
+        omega = omega / np.max(omega)
+        omega_vector = np.reshape(omega, N2, 1)
+    return omega_vector
+
+
+def Rhs(t, omega_vector):  # change order of arguments for different ode solver
+    global u, v
     omega = np.reshape(omega_vector, ([N, N])).transpose()
     omega_hat = np.fft.fft2(omega)  # *dealias
     # print(omega_hat)
     #    omega_hat = np.multiply(omega_hat,dealias)
     # print(omega_hat)
-    omx = np.real(np.fft.ifft2(1j * Kx * omega_hat*dealias))
-    omy = np.real(np.fft.ifft2(1j * Ky * omega_hat*dealias))
-    u = np.real(np.fft.ifft2(Dy * omega_hat*dealias))
-    v = np.real(np.fft.ifft2(-Dx * omega_hat*dealias))
+    omx = np.real(np.fft.ifft2(1j * Kx * omega_hat * dealias))
+    omy = np.real(np.fft.ifft2(1j * Ky * omega_hat * dealias))
+    u = np.real(np.fft.ifft2(Dy * omega_hat * dealias))
+    v = np.real(np.fft.ifft2(-Dx * omega_hat * dealias))
     rhs = np.real(np.fft.ifft2(-nu * K2 * omega_hat) - u * omx - v * omy)
     # rhs *=dealias
     Rhs = np.reshape(rhs, N2, 1)
@@ -46,78 +95,96 @@ def Rhs(t, omega_vector): #change order of arguments for different ode solver
 ####################################################################################################
 ####################################################################################################
 
-
+# Base constants and spatial grid vectors
 nu = 1e-4
 L = np.pi
 N = int(128)
 N2 = int(N ** 2)
 dx = 2 * L / N
-#
-# mesh = np.mgrid[:N, :N] * 2 * L / N
-# X = mesh[0]
-# Y = mesh[1]
-
 x = np.linspace(1 - N / 2, N / 2, N) * dx
 y = np.linspace(1 - N / 2, N / 2, N) * dx
 [X, Y] = np.meshgrid(x, y)
 
+# Spectral frequencies and grid vectors
 kx = fftfreq(N, 1. / N)
-# sacrifice = np.arange(N / 4 + 2, N / 4 * 3 + 1).astype(int)
-# kx[sacrifice] = 0
 ky = kx.copy()
 K = np.array(np.meshgrid(kx, ky), dtype=int)
 Kx = K[0]
 Ky = K[1]
 K2 = np.sum(K * K, 0, dtype=int)
 K2_inv = 1 / np.where(K2 == 0, 1, K2).astype(float)
-K2_inv[0][0]=0
+K2_inv[0][0] = 0
 Dx = 1j * Kx * K2_inv
 Dy = 1j * Ky * K2_inv
-kmax_dealias = 2. / 3. * (N / 2 +1)
+kmax_dealias = 2. / 3. * (N / 2 + 1)
 dealias = np.array(
-    (Kx < kmax_dealias) *  (Ky < kmax_dealias),
+    (Kx < kmax_dealias) * (Ky < kmax_dealias),
     dtype=bool)
 
+# Temporal
 t0 = 0
-t_end = 4
+t_end = 10
 dt = 0.1
-t = np.linspace(t0, t_end, np.ceil(t_end / dt))
+# t = np.linspace(t0, t_end, np.ceil(t_end / dt))
 
+omega_vector = initialize('omega_1')
 
+fig = plt.figure()
+animateOmega = False
+animateVelocity = False
+if (animateOmega or animateVelocity) == True:
+    numsteps = np.ceil(t_end / dt)
+    step = 1
+    pbar = tqdm(total=int(t_end / dt))
 
-omega = np.zeros([N, N])
-omega_vector = init(omega)  # takes in omega , fft -> set IC -> ifft -> reshape
-#print(omega_vector)
+    ims = []
+    while step <= numsteps:
+        solve = integrate.solve_ivp(Rhs, [0, dt], omega_vector, method='RK45', rtol=1e-10,
+                                    atol=1e-10)
+        omega_vector = solve.y[:, -1]
 
-#'''
-numsteps = np.ceil(t_end / dt)
-step = 1
-pbar = tqdm(total=int(t_end / dt))
-while step <= numsteps:
-    solve = integrate.solve_ivp(Rhs, [0, dt], omega_vector, method='LSODA', rtol=1e-10, atol=1e-10)
-    #solve = integrate.odeint(Rhs,omega_vector,[0,dt],full_output=True)
-    #print(solve[0][-1])
-    #omega_vector=solve[0][-1]
-    omega_vector = solve.y[:, -1]
-    print(np.max(omega_vector))
-    step += 1
-    pbar.update(1)
-    # omega = np.reshape(solve.y[:,-1], ([N, N]))
+        if animateOmega == True:
+            if step % 1 == 0:
+                omega = np.reshape(omega_vector, ([N, N])).transpose()
+                im = plt.imshow(omega, cmap='jet', vmax=solve.y.max, vmin=solve.y.min,
+                                animated=True)
+                ims.append([im])
+        if animateVelocity == True:
+            if step % 2 == 0:
+                im = plt.imshow(u, cmap='jet', animated=True)
+                ims.append([im])
+        step += 1
+        pbar.update(1)
 
-# omega_vector = solve.y[:,1]
-# omega = np.reshape(solve.y[:,-1], ([N, N]))
+    if animateOmega == True:
+        cbar = plt.colorbar(im)
+        # ScalarMappable.set_clim(min_val,max_val)
+        # cbar.set_ticks(np.linspace(min_val,max_val,10))
+        cbar.set_label('Vorticity magnitude [m/s]')
+        plt.xlim(0, N)
+        plt.ylim(0, N)
+        plt.xlabel('x [m]')
+        plt.ylabel('y [m]')
+        # plt.axes().set_aspect('equal')
+        ani = animation.ArtistAnimation(fig, ims, interval=200, blit=True,
+                                        repeat_delay=None)
+        ani.save('animationVorticity.gif', writer='imagemagick')
+        plt.show()
+    if animateVelocity == True:
+        cbar = plt.colorbar(im)
+        cbar.set_label('Velocity magnitude [m/s]')
+        plt.xlim(0, N)
+        plt.ylim(0, N)
+        plt.xlabel('x [m]')
+        plt.ylabel('y [m]')
+        # plt.axes().set_aspect('equal')
+        ani = animation.ArtistAnimation(fig, ims, interval=200, blit=True,
+                                        repeat_delay=None)
+        ani.save('animationVelocity.gif', writer='imagemagick', fps=30)
+        plt.show()
 
-# with open('solve_matrix'+'.pkl','wb') as f:
-#    pickle.dump([solve],f)
-
-# step+=1
-# pbar.update(1)
-pbar.close()
-omega = np.reshape(omega_vector, ([N, N]))
-
-# print(np.shape(solve.y[:,0]))
-plt.contourf(omega.T, levels=500, cmap='jet')
-plt.colorbar()
-# print(solve)
-plt.show()
-# '''
+    pbar.close()
+if (animateVelocity and animateOmega) == False:
+    solve = integrate.solve_ivp(Rhs, [0, t_end], omega_vector, method='RK45', rtol=1e-10,
+                                atol=1e-10)
+print('finished')
