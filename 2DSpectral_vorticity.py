@@ -1,7 +1,7 @@
 # Solver of 2D Navier Stokes equation on streamfunction-vorticity formulation.
-
+#TODO fix matplotlib such that one can plot two figures, one with velocity and one with
+# vorticity simultaneously.
 import numpy as np
-import pickle
 from numpy.fft import fftfreq, fft, ifft, irfft2, rfft2
 import random
 from numpy.random import seed, uniform
@@ -11,11 +11,7 @@ from tqdm import tqdm
 import matplotlib.animation as animation
 
 global u, v
-
-
 ####################################################################################################
-####################################################################################################
-
 def init_Omega(omega_grid):
     # Set initial condition on the Omega vector in Fourier space
     seed(1969)
@@ -29,8 +25,6 @@ def init_Omega(omega_grid):
     reshaped_omega_IC = np.reshape(omega_IC, N2, 1)
 
     return reshaped_omega_IC
-
-
 def initialize(choice):
     # Set initial condition on the velocity vectors.
     if choice == 'random':
@@ -73,8 +67,6 @@ def initialize(choice):
         omega = omega / np.max(omega)
         omega_vector = np.reshape(omega, N2, 1)
     return omega_vector
-
-
 def Rhs(t, omega_vector):  # change order of arguments for different ode solver
     global u, v
     omega = np.reshape(omega_vector, ([N, N])).transpose()
@@ -90,7 +82,6 @@ def Rhs(t, omega_vector):  # change order of arguments for different ode solver
     # rhs *=dealias
     Rhs = np.reshape(rhs, N2, 1)
     return Rhs
-
 def writeToFile(solve):
     print('Writing files... ')
     np.savetxt('dt_vector.txt',solve.t)
@@ -98,7 +89,6 @@ def writeToFile(solve):
     # read with: new_data = np.loadtxt('test.txt')
     print('Finished writing files.')
     return
-####################################################################################################
 ####################################################################################################
 
 # Base constants and spatial grid vectors
@@ -131,14 +121,15 @@ dealias = np.array(
 t0 = 0
 t_end = 20
 dt = 0.1
-# t = np.linspace(t0, t_end, np.ceil(t_end / dt))
 
+#Initialize solution vector
 omega_vector = initialize('omega_1')
 
-fig = plt.figure()
+
 animateOmega = False
 animateVelocity = False
 if (animateOmega or animateVelocity) == True:
+    fig = plt.figure()
     numsteps = np.ceil(t_end / dt)
     step = 1
     pbar = tqdm(total=int(t_end / dt))
