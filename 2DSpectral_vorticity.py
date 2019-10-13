@@ -1,5 +1,5 @@
 # Solver of 2D Navier Stokes equation on streamfunction-vorticity formulation.
-#TODO fix matplotlib such that one can plot two figures, one with velocity and one with
+# TODO fix matplotlib such that one can plot two figures, one with velocity and one with
 # vorticity simultaneously.
 import numpy as np
 from numpy.fft import fftfreq, fft, ifft, irfft2, rfft2
@@ -11,6 +11,8 @@ from tqdm import tqdm
 import matplotlib.animation as animation
 
 global u, v
+
+
 ####################################################################################################
 def init_Omega(omega_grid):
     # Set initial condition on the Omega vector in Fourier space
@@ -25,6 +27,8 @@ def init_Omega(omega_grid):
     reshaped_omega_IC = np.reshape(omega_IC, N2, 1)
 
     return reshaped_omega_IC
+
+
 def initialize(choice):
     # Set initial condition on the velocity vectors.
     if choice == 'random':
@@ -67,6 +71,8 @@ def initialize(choice):
         omega = omega / np.max(omega)
         omega_vector = np.reshape(omega, N2, 1)
     return omega_vector
+
+
 def Rhs(t, omega_vector):  # change order of arguments for different ode solver
     global u, v
     omega = np.reshape(omega_vector, ([N, N])).transpose()
@@ -76,25 +82,33 @@ def Rhs(t, omega_vector):  # change order of arguments for different ode solver
     # print(omega_hat)
     omx = np.real(np.fft.ifft2(1j * Kx * omega_hat * dealias))
     omy = np.real(np.fft.ifft2(1j * Ky * omega_hat * dealias))
-    u = np.real(np.fft.ifft2(Dy * omega_hat * dealias))
-    v = np.real(np.fft.ifft2(-Dx * omega_hat * dealias))
+    psi_hat = omega_hat * K2_inv
+    u = np.real(np.fft.ifft2(-1j * Ky * psi_hat * dealias))
+    v = np.real(np.fft.ifft2(1j * Kx * psi_hat * dealias))
+    #print(u)
+    # u = np.real(np.fft.ifft2(Dy * omega_hat * dealias))
+    # v = np.real(np.fft.ifft2(-Dx * omega_hat * dealias))
     rhs = np.real(np.fft.ifft2(-nu * K2 * omega_hat) - u * omx - v * omy)
     # rhs *=dealias
     Rhs = np.reshape(rhs, N2, 1)
     return Rhs
+
+
 def writeToFile(solve):
     print('Writing files... ')
-    np.savetxt('dt_vector.txt',solve.t)
+    np.savetxt('dt_vector.txt', solve.t)
     np.savetxt('omega_vector_matrix.txt', solve.y)
     # read with: new_data = np.loadtxt('test.txt')
     print('Finished writing files.')
     return
+
+
 ####################################################################################################
 
 # Base constants and spatial grid vectors
 nu = 1e-4
 L = np.pi
-N = int(256)
+N = int(128)
 N2 = int(N ** 2)
 dx = 2 * L / N
 x = np.linspace(1 - N / 2, N / 2, N) * dx
@@ -110,8 +124,8 @@ Ky = K[1]
 K2 = np.sum(K * K, 0, dtype=int)
 K2_inv = 1 / np.where(K2 == 0, 1, K2).astype(float)
 K2_inv[0][0] = 0
-Dx = 1j * Kx * K2_inv
-Dy = 1j * Ky * K2_inv
+# Dx = 1j * Kx * K2_inv
+# Dy = 1j * Ky * K2_inv
 kmax_dealias = 2. / 3. * (N / 2 + 1)
 dealias = np.array(
     (Kx < kmax_dealias) * (Ky < kmax_dealias),
@@ -119,12 +133,11 @@ dealias = np.array(
 
 # Temporal
 t0 = 0
-t_end = 20
-dt = 0.1
+t_end = 15
+dt = 1
 
-#Initialize solution vector
+# Initialize solution vector
 omega_vector = initialize('omega_1')
-
 
 animateOmega = False
 animateVelocity = False
@@ -143,12 +156,12 @@ if (animateOmega or animateVelocity) == True:
         if animateOmega == True:
             if step % 1 == 0:
                 omega = np.reshape(omega_vector, ([N, N])).transpose()
-                im = plt.imshow(omega, cmap='jet', vmax=solve.y.max, vmin=solve.y.min,
+                im = plt.imshow(omega, cmap='jet', vmax=1, vmin=-1,
                                 animated=True)
                 ims.append([im])
         if animateVelocity == True:
-            if step % 2 == 0:
-                im = plt.imshow(u, cmap='jet', animated=True)
+            if step % 5 == 0:
+                im = plt.imshow(np.abs((u**2)+(v**2)), cmap='jet', animated=True)
                 ims.append([im])
         step += 1
         pbar.update(1)
@@ -163,9 +176,9 @@ if (animateOmega or animateVelocity) == True:
         plt.xlabel('x [m]')
         plt.ylabel('y [m]')
         # plt.axes().set_aspect('equal')
-        ani = animation.ArtistAnimation(fig, ims, interval=200, blit=True,
+        ani = animation.ArtistAnimation(fig, ims, interval=20, blit=True,
                                         repeat_delay=None)
-        ani.save('animationVorticity.gif', writer='imagemagick')
+        ani.save('animationVorticity.gif', writer='imagemagick', fps=30)
         plt.show()
     if animateVelocity == True:
         cbar = plt.colorbar(im)
@@ -175,14 +188,17 @@ if (animateOmega or animateVelocity) == True:
         plt.xlabel('x [m]')
         plt.ylabel('y [m]')
         # plt.axes().set_aspect('equal')
-        ani = animation.ArtistAnimation(fig, ims, interval=200, blit=True,
+        ani = animation.ArtistAnimation(fig, ims, interval=50, blit=True,
                                         repeat_delay=None)
         ani.save('animationVelocity.gif', writer='imagemagick', fps=30)
+        #TODO find out what interval we need to make a gif of a certain length in seconds.
         plt.show()
 
     pbar.close()
 if (animateVelocity and animateOmega) == False:
     solve = integrate.solve_ivp(Rhs, [0, t_end], omega_vector, method='RK45', rtol=1e-10,
                                 atol=1e-10)
-    writeToFile(solve)
+    plt.imshow(np.abs((u ** 2) + (v ** 2)), cmap='jet')
+    plt.show()
+    #writeToFile(solve)
 print('finished')
