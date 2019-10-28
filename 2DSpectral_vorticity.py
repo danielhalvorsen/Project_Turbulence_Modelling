@@ -185,4 +185,4 @@ if (animateVelocity and animateOmega) == False:
     solve = integrate.solve_ivp(Rhs, [0, t_end], omega_vector, method='RK45', rtol=1e-10,
                                 atol=1e-10)
     writeToFile(solve)
-print('finished')
+print(' ------- Script finished -------')
