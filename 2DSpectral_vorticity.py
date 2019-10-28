@@ -140,7 +140,7 @@ def convertVorticityToVelocity(solve):
 # Base constants and spatial grid vectors
 nu = 1e-4
 L = np.pi
-N = int(32)
+N = int(64)
 N2 = int(N ** 2)
 dx = 2 * L / N
 x = np.linspace(1 - N / 2, N / 2, N) * dx
@@ -232,7 +232,7 @@ if (animateVelocity and animateOmega) == False:
     # Temporal data for non-animation
     # TODO for verification, the maximum dt can be changed in the ODE option argument
     t0 = 0
-    t_end = 1
+    t_end = 2
     dt = 0.1
     time_intervals = np.arange(t0, t_end + dt, dt)
     solve = integrate.solve_ivp(Rhs, [0, t_end], omega_vector, method='RK45',

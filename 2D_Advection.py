@@ -8,6 +8,7 @@ dt_list = np.loadtxt('dt_vector.txt')
 u_vel = np.loadtxt('u_vel.txt')
 v_vel = np.loadtxt('v_vel.txt')
 vorticity = np.loadtxt('vorticity.txt')
+print('-----------Loaded in text files-----')
 
 L = np.pi
 N = int(np.sqrt(np.shape(u_vel[0, :]))[0])
@@ -34,6 +35,9 @@ res = S.copy()
 S[int(N / 2) - int(N / 10):int(N / 2) + int(N / 10),
 int(N / 2) - int(N / 10):int(N / 2) + int(N / 10)] = 1
 
+#fig = plt.figure()
+#ax = plt.axes(xlim=(0,N),ylim=(0,N))
+#domain, = ax.plot(S)
 for t in range(time_levels):
     # Temporal loop
     for i in range(N):
@@ -51,7 +55,15 @@ for t in range(time_levels):
             Sy_min  = (3*S[i,j]-4*S[i,j-1]+S[i,j-2])/(2*dy)
 
             res[i,j] = -(u_plus*Sx_min+u_min*Sx_plus)-(v_plus*Sy_min+v_min*Sy_plus)
-    S_new = S+dt_list[t]*res
+    S_new = S+dt*res
+ #   domain.set_data(S)
     S = S_new.copy()
-    plt.imshow(S)
-    plt.show()
+    max_u = np.max(np.abs(u_vel))
+    max_v = np.max(np.abs(v_vel))
+    max_vel = np.max([max_u,max_v])
+    cfl = np.abs(max_vel*dt/dx)
+    print('Max CFL value: ', cfl,'    Time level:  ',dt_list[t])
+# TODO VALUES OF SEDIEMTN OSCILLATES BETWEEN POSITIVE ANG NEGATIVE, WHY??
+    plt.imshow(S,cmap='jet',vmin=0,vmax=1)
+    plt.pause(0.005)
+plt.show()
