@@ -1,7 +1,6 @@
 # Solver of 2D Navier Stokes equation on streamfunction-vorticity formulation.
 # TODO fix matplotlib such that one can plot two figures, one with velocity and one with
 # vorticity simultaneously.
-# TODO store velocity values
 # TODO FIX MAPPING STRUCTURE IN FOLDER. DELETE UNECESSARY FILES!!!
 import numpy as np
 from numpy.fft import fftfreq, fft, ifft, irfft2, rfft2
@@ -117,8 +116,8 @@ def convertVorticityToVelocity(solve):
         psi_hat = omega_hat * K2_inv
         u_vel[t] = np.real(np.fft.ifft2(-1j * Ky * psi_hat * dealias))
         v_vel[t] = np.real(np.fft.ifft2(1j * Kx * psi_hat * dealias))
-    u_vel = np.reshape(np.array(u_vel),(len(time_intervals),N2),1).transpose()
-    v_vel = np.reshape(np.array(v_vel),(len(time_intervals),N2),1).transpose()
+    u_vel = np.reshape(np.array(u_vel),(len(time_intervals),N2),1)
+    v_vel = np.reshape(np.array(v_vel),(len(time_intervals),N2),1)
     return u_vel, v_vel
 
 
