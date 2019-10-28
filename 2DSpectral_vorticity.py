@@ -108,7 +108,7 @@ def writeToFile(solve):
 # Base constants and spatial grid vectors
 nu = 1e-4
 L = np.pi
-N = int(128)
+N = int(256)
 N2 = int(N ** 2)
 dx = 2 * L / N
 x = np.linspace(1 - N / 2, N / 2, N) * dx
@@ -133,7 +133,7 @@ dealias = np.array(
 
 # Temporal
 t0 = 0
-t_end = 15
+t_end = 2
 dt = 1
 
 # Initialize solution vector
@@ -200,5 +200,5 @@ if (animateVelocity and animateOmega) == False:
                                 atol=1e-10)
     plt.imshow(np.abs((u ** 2) + (v ** 2)), cmap='jet')
     plt.show()
-    #writeToFile(solve)
+    writeToFile(solve)
 print('finished')
