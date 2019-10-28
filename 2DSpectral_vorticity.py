@@ -1,6 +1,8 @@
 # Solver of 2D Navier Stokes equation on streamfunction-vorticity formulation.
 # TODO fix matplotlib such that one can plot two figures, one with velocity and one with
 # vorticity simultaneously.
+# TODO store velocity values
+# TODO FIX MAPPING STRUCTURE IN FOLDER. DELETE UNECESSARY FILES!!!
 import numpy as np
 from numpy.fft import fftfreq, fft, ifft, irfft2, rfft2
 import random
@@ -85,7 +87,7 @@ def Rhs(t, omega_vector):  # change order of arguments for different ode solver
     psi_hat = omega_hat * K2_inv
     u = np.real(np.fft.ifft2(-1j * Ky * psi_hat * dealias))
     v = np.real(np.fft.ifft2(1j * Kx * psi_hat * dealias))
-    #print(u)
+    # print(u)
     # u = np.real(np.fft.ifft2(Dy * omega_hat * dealias))
     # v = np.real(np.fft.ifft2(-Dx * omega_hat * dealias))
     rhs = np.real(np.fft.ifft2(-nu * K2 * omega_hat) - u * omx - v * omy)
@@ -97,10 +99,41 @@ def Rhs(t, omega_vector):  # change order of arguments for different ode solver
 def writeToFile(solve):
     print('Writing files... ')
     np.savetxt('dt_vector.txt', solve.t)
-    np.savetxt('omega_vector_matrix.txt', solve.y)
+    np.savetxt('vorticity.txt', solve.y)
+    u_vel,v_vel = convertVorticityToVelocity(solve.y)
+    np.savetxt('u_vel.txt',u_vel)
+    np.savetxt('v_vel.txt',v_vel)
     # read with: new_data = np.loadtxt('test.txt')
     print('Finished writing files.')
     return
+
+def convertVorticityToVelocity(solve):
+    vorticityField = solve
+    u_vel = [None]*len(time_intervals) #Allocate memory for array
+    v_vel = [None]*len(time_intervals) #Allocate memory for array
+    for t in range(len(time_intervals)):
+        omega = np.reshape(vorticityField[:,t], ([N, N])).transpose()
+        omega_hat = np.fft.fft2(omega)
+        psi_hat = omega_hat * K2_inv
+        u_vel[t] = np.real(np.fft.ifft2(-1j * Ky * psi_hat * dealias))
+        v_vel[t] = np.real(np.fft.ifft2(1j * Kx * psi_hat * dealias))
+    u_vel = np.reshape(np.array(u_vel),(len(time_intervals),N2),1).transpose()
+    v_vel = np.reshape(np.array(v_vel),(len(time_intervals),N2),1).transpose()
+    return u_vel, v_vel
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ####################################################################################################
@@ -108,7 +141,7 @@ def writeToFile(solve):
 # Base constants and spatial grid vectors
 nu = 1e-4
 L = np.pi
-N = int(256)
+N = int(32)
 N2 = int(N ** 2)
 dx = 2 * L / N
 x = np.linspace(1 - N / 2, N / 2, N) * dx
@@ -131,17 +164,17 @@ dealias = np.array(
     (Kx < kmax_dealias) * (Ky < kmax_dealias),
     dtype=bool)
 
-# Temporal
-t0 = 0
-t_end = 2
-dt = 1
-
 # Initialize solution vector
 omega_vector = initialize('omega_1')
 
 animateOmega = False
 animateVelocity = False
 if (animateOmega or animateVelocity) == True:
+    # Temporal data for animation
+    t0 = 0
+    t_end = 2
+    dt = 1
+
     fig = plt.figure()
     numsteps = np.ceil(t_end / dt)
     step = 1
@@ -161,7 +194,7 @@ if (animateOmega or animateVelocity) == True:
                 ims.append([im])
         if animateVelocity == True:
             if step % 5 == 0:
-                im = plt.imshow(np.abs((u**2)+(v**2)), cmap='jet', animated=True)
+                im = plt.imshow(np.abs((u ** 2) + (v ** 2)), cmap='jet', animated=True)
                 ims.append([im])
         step += 1
         pbar.update(1)
@@ -191,14 +224,22 @@ if (animateOmega or animateVelocity) == True:
         ani = animation.ArtistAnimation(fig, ims, interval=50, blit=True,
                                         repeat_delay=None)
         ani.save('animationVelocity.gif', writer='imagemagick', fps=30)
-        #TODO find out what interval we need to make a gif of a certain length in seconds.
+        # TODO find out what interval we need to make a gif of a certain length in
+        #  seconds.
         plt.show()
 
     pbar.close()
 if (animateVelocity and animateOmega) == False:
-    solve = integrate.solve_ivp(Rhs, [0, t_end], omega_vector, method='RK45', rtol=1e-10,
+    # Temporal data for non-animation
+    # TODO for verification, the maximum dt can be changed in the ODE option argument
+    t0 = 0
+    t_end = 1
+    dt = 0.1
+    time_intervals = np.arange(t0, t_end + dt, dt)
+    solve = integrate.solve_ivp(Rhs, [0, t_end], omega_vector, method='RK45',
+                                t_eval=time_intervals, rtol=1e-10,
                                 atol=1e-10)
     plt.imshow(np.abs((u ** 2) + (v ** 2)), cmap='jet')
     plt.show()
-    writeToFile(solve)
+    writeToFile(solve) # Written to work for integrate.solve_ivp().
 print(' ------- Script finished -------')
