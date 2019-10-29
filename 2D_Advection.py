@@ -35,7 +35,8 @@ res = S.copy()
 S[int(N / 2) - int(N / 10):int(N / 2) + int(N / 10),
 int(N / 2) - int(N / 10):int(N / 2) + int(N / 10)] = 1
 
-#fig = plt.figure()
+fig,axs = plt.subplots(2)
+fig.suptitle('Title here')
 #ax = plt.axes(xlim=(0,N),ylim=(0,N))
 #domain, = ax.plot(S)
 for t in range(time_levels):
@@ -64,6 +65,12 @@ for t in range(time_levels):
     cfl = np.abs(max_vel*dt/dx)
     print('Max CFL value: ', cfl,'    Time level:  ',dt_list[t])
 # TODO VALUES OF SEDIEMTN OSCILLATES BETWEEN POSITIVE ANG NEGATIVE, WHY??
-    plt.imshow(S,cmap='jet',vmin=0,vmax=1)
+    axs[0].imshow(S,cmap='jet',vmin=0,vmax=1)
+    axs[1].imshow(np.abs((u_vel[t] ** 2) + (v_vel[t] ** 2)), cmap='jet')
+    #PCM = axs[1].get_children()[2]  # get the mappable, the 1st and the 2nd are the x and y axes
+    #plt.colorbar(PCM, ax=axs)
+    fig.colorbar(ax=axs[0])
+    fig.colorbar(ax=axs[1])
+    #plt.imshow(S,cmap='jet',vmin=0,vmax=1)
     plt.pause(0.005)
 plt.show()
