@@ -7,10 +7,11 @@ from tqdm import tqdm
 
 # U is set to dtype float32
 # Reynoldsnumber determined by nu Re = 1600, nu = 1/1600
-nu = 0.000625
+nu = 0.0000625
 # nu = 0.00000625
-T = 20
-dt = 0.1
+T = 10
+dt = 0.01
+animation_slice = 100
 N = int(2 ** 6)
 N_half = int(N / 2 + 1)
 comm = MPI.COMM_WORLD
@@ -30,7 +31,7 @@ Uc_hat = empty((N, Np, N_half), dtype=complex)
 Uc_hatT = empty((Np, N, N_half), dtype=complex)
 U_mpi = empty((num_processes, Np, Np, N_half), dtype=complex)
 curl = empty((3, Np, N, N))
-animate_U_x = empty((int(T / dt), Np, N, N), dtype=float32)
+animate_U_x = empty((int(T / dt/animation_slice), Np, N, N), dtype=float32)
 save_animation = True
 kx = fftfreq(N, 1. / N)
 kz = kx[:(N_half)].copy();
@@ -45,7 +46,7 @@ dealias = array(
 
 a = [1. / 6., 1. / 3., 1. / 3., 1. / 6.]
 b = [0.5, 0.5, 1.]
-
+dir = '/home/danieloh/PycharmProjects/Project_Turbulence_Modelling/animation_folder/'
 
 def ifftn_mpi(fu, u):
     # Inverse Fourier transform
@@ -106,6 +107,7 @@ for i in range(3):
 t = 0.0
 tstep = 0
 save_nr = 1
+savecount = 1
 mid_idx = int(N / 2)
 pbar = tqdm(total=int(T / dt))
 while t < T - 1e-8:
@@ -123,7 +125,13 @@ while t < T - 1e-8:
         U[i] = ifftn_mpi(U_hat[i], U[i])
     # if save_animation == True and tstep % save_nr == 0:
     # Save the animation every "save_nr" time step
-    animate_U_x[tstep] = U[0].copy()
+    animate_U_x[tstep%(animation_slice+1)] = U[0].copy()
+    if tstep%(animation_slice+1)==0:
+        if save_animation == True:
+            animate_gather = comm.gather(animate_U_x,root=0)
+            with open(dir+'animate_U'+str(savecount)+'.pkl', 'wb') as h:
+                pickle.dump([animate_gather], h)
+        savecount += 1
     tstep += 1
     pbar.update(1)
 
@@ -136,9 +144,10 @@ pbar.close()
 # Root is rank of receiving process (core 1)
 U_gathered = comm.gather(U, root=0)
 X_gathered = comm.gather(X, root=0)
+#animate_gathered = comm.gather(animate_U_x,root=0)
 
-animate_U_x_T = animate_U_x.transpose((0, 3, 2, 1))
-animate_save_T = [animate_U_x_T[i][int(N / 2)] for i in range(len(animate_U_x_T))]
+##animate_U_x_T = animate_U_x.transpose((0, 3, 2, 1))
+#animate_save_T = [animate_U_x_T[i][int(N / 2)] for i in range(len(animate_U_x_T))]
 
 with open('U' + '.pkl', 'wb') as f:
     pickle.dump([U_gathered], f)
@@ -146,7 +155,4 @@ with open('U' + '.pkl', 'wb') as f:
 with open('X.pkl', 'wb') as g:
     pickle.dump([X_gathered], g)
 
-if save_animation == True:
-    #   animate_U_x_gather = comm.gather(animate_U_x, root=0)
-    with open('animate_U_x_' + str(rank) + '.pkl', 'wb') as h:
-        pickle.dump([animate_save_T], h)
+
