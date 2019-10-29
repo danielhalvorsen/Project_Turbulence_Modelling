@@ -60,6 +60,21 @@ def initialize(choice):
         omega = np.real(np.fft.ifft2(omega_hat))
         omega = omega / np.max(omega)
         omega_vector = np.reshape(omega, N2, 1)
+    if choice == 'velocity_strips':
+        u = np.ones([N, N]) * 0
+        v = np.ones([N, N]) * 0
+        u[int(N / 2 + N / 9 - N / 20):int(N / 2 + N / 9 + N / 20), :] = 1
+        u[int(N / 2 - N / 9 - N / 20):int(N / 2 - N / 9 + N / 20), :] = -1
+        #plt.imshow(u)
+        #plt.show()
+
+        u_hat = np.fft.fft2(u)
+        v_hat = np.fft.fft2(v)
+        omega_hat = ((v_hat * Kx) - (u_hat * Ky)) * 1j
+        omega = np.real(np.fft.ifft2(omega_hat))
+      #  omega = omega / np.max(omega)
+        omega_vector = np.reshape(omega, N2, 1)
+
     if choice == 'omega_1':
         seed(1969)
         omega_grid = np.zeros([N, N])
@@ -98,35 +113,38 @@ def Rhs(t, omega_vector):  # change order of arguments for different ode solver
 def writeToFile(solve):
     print('Writing files... ')
     np.savetxt('dt_vector.txt', solve.t)
+    print('Time list written...')
     np.savetxt('vorticity.txt', solve.y)
-    u_vel,v_vel = convertVorticityToVelocity(solve.y)
-    np.savetxt('u_vel.txt',u_vel)
-    np.savetxt('v_vel.txt',v_vel)
+    print('Vorticity list written...')
+    u_vel, v_vel = convertVorticityToVelocity(solve.y)
+    np.savetxt('u_vel.txt', u_vel)
+    print('u velocity list written...')
+    np.savetxt('v_vel.txt', v_vel)
+    print('v-velocity list written...')
     # read with: new_data = np.loadtxt('test.txt')
     print('Finished writing files.')
     return
 
+
 def convertVorticityToVelocity(solve):
     vorticityField = solve
-    u_vel = [None]*len(time_intervals) #Allocate memory for array
-    v_vel = [None]*len(time_intervals) #Allocate memory for array
+    u_vel = [None] * len(time_intervals)  # Allocate memory for array
+    v_vel = [None] * len(time_intervals)  # Allocate memory for array
     for t in range(len(time_intervals)):
-        omega = np.reshape(vorticityField[:,t], ([N, N])).transpose()
+        omega = np.reshape(vorticityField[:, t], ([N, N])).transpose()
         omega_hat = np.fft.fft2(omega)
         psi_hat = omega_hat * K2_inv
         u_vel[t] = np.real(np.fft.ifft2(-1j * Ky * psi_hat * dealias))
         v_vel[t] = np.real(np.fft.ifft2(1j * Kx * psi_hat * dealias))
-    u_vel = np.reshape(np.array(u_vel),(len(time_intervals),N2),1)
-    v_vel = np.reshape(np.array(v_vel),(len(time_intervals),N2),1)
+    u_vel = np.reshape(np.array(u_vel), (len(time_intervals), N2), 1)
+    v_vel = np.reshape(np.array(v_vel), (len(time_intervals), N2), 1)
     return u_vel, v_vel
-
-
 
 
 ####################################################################################################
 
 # Base constants and spatial grid vectors
-nu = 1e-4
+nu = 1e-3
 L = np.pi
 N = int(64)
 N2 = int(N ** 2)
@@ -159,8 +177,8 @@ animateVelocity = False
 if (animateOmega or animateVelocity) == True:
     # Temporal data for animation
     t0 = 0
-    t_end = 2
-    dt = 1
+    t_end = 10
+    dt = 0.1
 
     fig = plt.figure()
     numsteps = np.ceil(t_end / dt)
@@ -196,7 +214,7 @@ if (animateOmega or animateVelocity) == True:
         plt.xlabel('x [m]')
         plt.ylabel('y [m]')
         # plt.axes().set_aspect('equal')
-        ani = animation.ArtistAnimation(fig, ims, interval=20, blit=True,
+        ani = animation.ArtistAnimation(fig, ims, interval=15, blit=True,
                                         repeat_delay=None)
         ani.save('animationVorticity.gif', writer='imagemagick', fps=30)
         plt.show()
@@ -208,7 +226,7 @@ if (animateOmega or animateVelocity) == True:
         plt.xlabel('x [m]')
         plt.ylabel('y [m]')
         # plt.axes().set_aspect('equal')
-        ani = animation.ArtistAnimation(fig, ims, interval=50, blit=True,
+        ani = animation.ArtistAnimation(fig, ims, interval=15, blit=True,
                                         repeat_delay=None)
         ani.save('animationVelocity.gif', writer='imagemagick', fps=30)
         # TODO find out what interval we need to make a gif of a certain length in
@@ -216,17 +234,19 @@ if (animateOmega or animateVelocity) == True:
         plt.show()
 
     pbar.close()
+
 if (animateVelocity and animateOmega) == False:
     # Temporal data for non-animation
+    print('Entering false script')
     # TODO for verification, the maximum dt can be changed in the ODE option argument
     t0 = 0
-    t_end = 2
-    dt = 0.1
+    t_end = 15
+    dt = 0.01
     time_intervals = np.arange(t0, t_end + dt, dt)
     solve = integrate.solve_ivp(Rhs, [0, t_end], omega_vector, method='RK45',
                                 t_eval=time_intervals, rtol=1e-10,
                                 atol=1e-10)
     plt.imshow(np.abs((u ** 2) + (v ** 2)), cmap='jet')
     plt.show()
-    writeToFile(solve) # Written to work for integrate.solve_ivp().
+    writeToFile(solve)  # Written to work for integrate.solve_ivp().
 print(' ------- Script finished -------')
