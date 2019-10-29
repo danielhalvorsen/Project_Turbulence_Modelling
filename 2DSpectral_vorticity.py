@@ -123,18 +123,6 @@ def convertVorticityToVelocity(solve):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 ####################################################################################################
 
 # Base constants and spatial grid vectors
