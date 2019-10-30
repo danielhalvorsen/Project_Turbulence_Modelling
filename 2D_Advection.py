@@ -14,6 +14,9 @@ L = np.pi
 N = int(np.sqrt(np.shape(u_vel[0, :]))[0])
 dx = 2 * L / N
 dy = dx
+x = np.linspace(1 - N / 2, N / 2, N) * dx
+y = np.linspace(1 - N / 2, N / 2, N) * dx
+[X, Y] = np.meshgrid(x, y)
 
 time_levels = int(len(dt_list))
 dt = dt_list[1] - dt_list[0]
@@ -35,16 +38,11 @@ res = S.copy()
 S[int(N / 2) - int(N / 10):int(N / 2) + int(N / 10),
 int(N / 2) - int(N / 10):int(N / 2) + int(N / 10)] = 1
 
-
-
-
-
 fig,axs = plt.subplots(2)
 fig.suptitle('Title here')
 #ax = plt.axes(xlim=(0,N),ylim=(0,N))
 #domain, = ax.plot(S)
-#TODO bevart masse
-# TODO positive verdier
+
 scheme = 'Second_Upwind'
 if scheme=='Second_Upwind':
     for t in range(time_levels):
@@ -73,13 +71,24 @@ if scheme=='Second_Upwind':
         cfl = np.abs(max_vel*dt/dx)
         print('Max CFL value: ', cfl,'    Time level:  ',dt_list[t])
     # TODO VALUES OF SEDIEMTN OSCILLATES BETWEEN POSITIVE ANG NEGATIVE, WHY??
-       # plt.suptitle('Max CFL value: '+np.str(cfl)+'   Time level:  '+str(dt_list[t]))
-      #  axs[0].imshow(S.T,cmap='jet',vmin=0,vmax=1)
-       # axs[1].imshow(np.abs((u_vel[t] ** 2) + (v_vel[t] ** 2)), cmap='jet')
+        plt.suptitle('Max CFL value: '+np.str(cfl)+'   Time level:  '+str(dt_list[t]))
+        axs[0].imshow(S.T,cmap='jet',vmin=0,vmax=1)
+        axs[1].imshow(np.abs((u_vel[t] ** 2) + (v_vel[t] ** 2)), cmap='jet')
         #PCM = axs[1].get_children()[2]  # get the mappable, the 1st and the 2nd are the x and y axes
         #plt.colorbar(PCM, ax=axs)
         #fig.colorbar(ax=axs[0])
         #fig.colorbar(ax=axs[1])
         #plt.imshow(S,cmap='jet',vmin=0,vmax=1)
-     #   plt.pause(0.005)
-  #  plt.show()
+        plt.pause(0.005)
+    plt.show()
+
+
+'''     M = np.hypot(u_vel[t], v_vel[t])
+        Q = axs[1].quiver(X, Y, u_vel[t], v_vel[t], M, units='x', pivot='tip',
+                          width=0.022,
+                       scale=1 / 0.15)
+        qk = axs[1].quiverkey(Q, 0.9, 0.9, 1, r'$1 \frac{m}{s}$', labelpos='E',
+                           coordinates='figure')
+        axs[1].scatter(X, Y, color='0.5', s=1)
+'''
+
