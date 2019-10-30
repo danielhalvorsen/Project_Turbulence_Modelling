@@ -82,6 +82,7 @@ def initialize(choice):
         omega_hat[0, 4] = uniform() + 1j * uniform()
         omega_hat[1, 1] = uniform() + 1j * uniform()
         omega_hat[3, 0] = uniform() + 1j * uniform()
+        omega_hat[2, 3] = uniform() + 1j * uniform()
         # print(omega_hat)
         omega = np.real(np.fft.ifft2(omega_hat))
         omega = omega / np.max(omega)
@@ -144,9 +145,9 @@ def convertVorticityToVelocity(solve):
 ####################################################################################################
 
 # Base constants and spatial grid vectors
-nu = 1e-3
+nu = 1e-6
 L = np.pi
-N = int(64)
+N = int(256)
 N2 = int(N ** 2)
 dx = 2 * L / N
 x = np.linspace(1 - N / 2, N / 2, N) * dx
@@ -173,11 +174,11 @@ dealias = np.array(
 omega_vector = initialize('omega_1')
 
 animateOmega = False
-animateVelocity = False
+animateVelocity = True
 if (animateOmega or animateVelocity) == True:
     # Temporal data for animation
     t0 = 0
-    t_end = 10
+    t_end = 15
     dt = 0.1
 
     fig = plt.figure()
@@ -192,15 +193,17 @@ if (animateOmega or animateVelocity) == True:
         omega_vector = solve.y[:, -1]
 
         if animateOmega == True:
-            if step % 1 == 0:
+            if step % 5 == 0:
                 omega = np.reshape(omega_vector, ([N, N])).transpose()
                 im = plt.imshow(omega, cmap='jet', vmax=1, vmin=-1,
                                 animated=True)
+                plt.pause(0.05)
                 ims.append([im])
         if animateVelocity == True:
-            if step % 5 == 0:
+            if step % 3 == 0:
                 im = plt.imshow(np.abs((u ** 2) + (v ** 2)), cmap='jet', animated=True)
                 ims.append([im])
+                plt.pause(0.05)
         step += 1
         pbar.update(1)
 
@@ -234,15 +237,15 @@ if (animateOmega or animateVelocity) == True:
         plt.show()
 
     pbar.close()
-
+'''
 if (animateVelocity and animateOmega) == False:
     # Temporal data for non-animation
     print('Entering false script')
     # TODO for verification, the maximum dt can be changed in the ODE option argument
     t0 = 0
-    t_end = 15
+    t_end = 20
     dt = 0.01
-    time_intervals = np.arange(t0, t_end + dt, dt)
+    time_intervals = np.linspace(t0,t_end,t_end/dt+1)
     solve = integrate.solve_ivp(Rhs, [0, t_end], omega_vector, method='RK45',
                                 t_eval=time_intervals, rtol=1e-10,
                                 atol=1e-10)
@@ -250,3 +253,4 @@ if (animateVelocity and animateOmega) == False:
     plt.show()
     writeToFile(solve)  # Written to work for integrate.solve_ivp().
 print(' ------- Script finished -------')
+'''
