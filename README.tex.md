@@ -5,7 +5,7 @@
 
 
 <p align="center">
-  <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/animation.gif">
+  <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/animation64_160k.gif">
 </p>
 Preliminary isotropic turbulence using N=64, Re=160K. Re will be lowered and number of cells will be increased.
 
@@ -14,3 +14,9 @@ Preliminary isotropic turbulence using N=64, Re=160K. Re will be lowered and num
   <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/VorticityAnimation.gif">
 </p>
 Two dimensional Navier Stokes, magnitude of vorticity, N=256, Re=10k.
+
+<p align="center">
+  <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/animationVelocity.gif">
+</p>
+Two dimensional Navier Stokes, magnitude of velocity
+
