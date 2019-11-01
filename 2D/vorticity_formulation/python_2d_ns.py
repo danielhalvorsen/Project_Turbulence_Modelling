@@ -20,16 +20,16 @@ sys.path.append(parent)
 
 #parameters
 new=1;
-Nstep=5000; #no. of steps
-N=Nx=Ny=256; #grid size
+Nstep=10000; #no. of steps
+N=Nx=Ny=64; #grid size
 t=0;
 nu=5e-10; #viscosity
 nu_hypo=2e-3; #hypo-viscosity
-dt=5e-7; #time-step
+dt=5e-5; #time-step
 dt_h=dt/2; #half-time step
 ic_type=2 #1 for Taylor-Green init_cond; 2 for random init_cond
 k_ic=1;  #initial wavenumber for Taylor green forcing
-diag_out_step = 1000; #frequency of outputting diagnostics
+diag_out_step = 2500; #frequency of outputting diagnostics
 
 #------------MPI setup---------
 comm = MPI.COMM_WORLD
@@ -101,57 +101,57 @@ def IC_coor(Nx, Ny, Np, dx, dy, rank, num_processes):
     
     
 #---------Dealiasing function----
-def delias(Vxhat, Vyhat, Nx, Np, k2):
+def delias(u_hat, v_hat, Nx, Np, k2):
     #use 1/3 rule to remove values of wavenumber >= Nx/3
     for i in range(Nx):
         for j in range(Np):
             if(sqrt(k2[i,j]) >= Nx/3.):
-                Vxhat[i,j]=0;
-                Vyhat[i,j]=0;
+                u_hat[i,j]=0;
+                v_hat[i,j]=0;
     #Projection operator on velocity fields to make them solenoidal-----
-    tmp = (kx*Vxhat + ky*Vyhat)/k2;
-    Vxhat = Vxhat - kx*tmp;
-    Vyhat = Vyhat - ky*tmp;
-    return Vxhat, Vyhat
+    tmp = (kx*u_hat + ky*v_hat)/k2;
+    u_hat = u_hat - kx*tmp;
+    v_hat = v_hat - ky*tmp;
+    return u_hat, v_hat
 
 
 #----Initialize Velocity in Fourier space-----------
 def IC_condition(ic_type, k_ic, kx, ky, Nx, Np):
     #taylor green vorticity field
-    Vxhat = zeros((Nx, Np), dtype=complex);
-    Vyhat = zeros((Nx, Np), dtype=complex);
+    u_hat = zeros((Nx, Np), dtype=complex);
+    v_hat = zeros((Nx, Np), dtype=complex);
     if (new==1 and ic_type==1):
         for iss in [-1, 1]:
             for jss in [-1, 1]:
                 for i in range(Nx):
                     for j in range(Np):
                         if(int(kx[i,j])==iss*k_ic and int(ky[i,j])==jss*k_ic):
-                            Vxhat[i,j] = -1j*iss;
-                            Vyhat[i,j] = -1j*(-jss);               
+                            u_hat[i,j] = -1j*iss;
+                            v_hat[i,j] = -1j*(-jss);
         #Set total energy to 1
-        Vxhat=0.5*Vxhat;     
-        Vyhat=0.5*Vyhat;
+        u_hat=0.5*u_hat;
+        v_hat=0.5*v_hat;
     #generate random velocity field
     elif (new==1 and ic_type==2):
-        Vx=random.rand(Np,Ny)
-        Vy=random.rand(Np,Ny)
-        Vxhat=fftn_mpi(Vx, Vxhat)
-        Vyhat=fftn_mpi(Vy, Vyhat)     
-    return Vxhat, Vyhat
+        u=random.rand(Np,Ny)
+        v=random.rand(Np,Ny)
+        u_hat=fftn_mpi(u, u_hat)
+        v_hat=fftn_mpi(v, v_hat)
+    return u_hat, v_hat
 
 #------output function----
 #this function output vorticty contour
-def output(Wz, x, y, Nx, Ny, rank, time):
+def output(omega, x, y, Nx, Ny, rank, time):
    #collect values to root 
-        Wz_all=comm.gather(Wz, root=0)
+        omega_all=comm.gather(omega, root=0)
         x_all=comm.gather(x, root=0)
         y_all=comm.gather(y, root=0)
         if rank==0:
             #reshape the ''list''
-            Wz_all=asarray(Wz_all).reshape(Nx, Ny)
+            omega_all=asarray(omega_all).reshape(Nx, Ny)
             x_all=asarray(x_all).reshape(Nx, Ny)
             y_all=asarray(y_all).reshape(Nx, Ny)
-            plt.contourf(x_all, y_all, Wz_all,cmap='jet')
+            plt.contourf(x_all, y_all, omega_all,cmap='jet')
             delimiter = ''
             title = delimiter.join(['vorticity contour, time=', str(time)])
             plt.xlabel('x')
@@ -177,27 +177,27 @@ x, y, kx, ky, k2, k2_exp=IC_coor(Nx, Ny, Np, dx, dy, rank, num_processes)
 	
 #----Initialize Variables-------(hat denotes variables in Fourier space,)
 #velocity
-Vxhat=zeros((Nx, Np), dtype=complex);
-Vyhat=zeros((Nx, Np), dtype=complex);
+u_hat=zeros((Nx, Np), dtype=complex);
+v_hat=zeros((Nx, Np), dtype=complex);
 #Vorticity
-Wzhat=zeros((Nx, Np), dtype=complex);
+omega_hat=zeros((Nx, Np), dtype=complex);
 #Nonlinear term
 NLxhat=zeros((Nx, Np), dtype=complex);
 NLyhat=zeros((Nx, Np), dtype=complex);
 #variables in physical space
-Vx=zeros((Np, Ny), dtype=float);
-Vy=zeros((Np, Ny), dtype=float);
-Wz=zeros((Np, Ny), dtype=float);
+u=zeros((Np, Ny), dtype=float);
+v=zeros((Np, Ny), dtype=float);
+omega=zeros((Np, Ny), dtype=float);
 
 #generate initial velocity field
-Vxhat, Vyhat=IC_condition(ic_type, k_ic, kx, ky, Nx, Np)
+u_hat, v_hat=IC_condition(ic_type, k_ic, kx, ky, Nx, Np)
       
 #------Dealiasing------------------------------------------------
-Vxhat, Vyhat=delias(Vxhat, Vyhat, Nx, Np, k2)
+u_hat, v_hat=delias(u_hat, v_hat, Nx, Np, k2)
 #
 #------Storing variables for later use in time integration--------
-Vxhat_t0 = Vxhat;
-Vyhat_t0 = Vyhat;
+u_hat_t0 = u_hat;
+v_hat_t0 = v_hat;
 #
 
 step = 1
@@ -209,22 +209,22 @@ for istep in range(Nstep+1):
     if rank==0:
         wt=MPI.Wtime()
     #------Dealiasing
-    Vxhat, Vyhat=delias(Vxhat, Vyhat, Nx, Np, k2)
+    u_hat, v_hat=delias(u_hat, v_hat, Nx, Np, k2)
     #Calculate Vorticity
-    Wzhat = 1j*(kx*Vyhat - ky*Vxhat);
+    omega_hat = 1j*(kx*v_hat - ky*u_hat);
     #fields in x-space
-    Vx=ifftn_mpi(Vxhat,Vx)
-    Vy=ifftn_mpi(Vyhat,Vy)
-    Wz=ifftn_mpi(Wzhat,Wz)
+    u=ifftn_mpi(u_hat,u)
+    v=ifftn_mpi(v_hat,v)
+    omega=ifftn_mpi(omega_hat,omega)
     
     #Fields in Fourier Space
-    Vxhat=fftn_mpi(Vx, Vxhat)
-    Vyhat=fftn_mpi(Vy, Vyhat)
-    Wzhat=fftn_mpi(Wz, Wzhat)
+    u_hat=fftn_mpi(u, u_hat)
+    v_hat=fftn_mpi(v, v_hat)
+    omega_hat=fftn_mpi(omega, omega_hat)
    
     #Calculate non-linear term in x-space
-    NLx =  Vy*Wz;
-    NLy = -Vx*Wz;
+    NLx =  v*omega;
+    NLy = -u*omega;
     
     
     #move non-linear term back to Fourier k-space
@@ -232,33 +232,34 @@ for istep in range(Nstep+1):
     NLyhat=fftn_mpi(NLy, NLyhat)
     
     #------Dealiasing------------------------------------------------
-    Vxhat, Vyhat=delias(Vxhat, Vyhat, Nx, Np, k2)
+    u_hat, v_hat=delias(u_hat, v_hat, Nx, Np, k2)
     
     #Integrate in time
     #---Euler for 1/2-step-----------
     if(istep==0):
-          Vxhat = Vxhat + dt_h*(NLxhat -nu*(k2**5)*Vxhat -nu_hypo*(k2**(-0))**Vxhat);
-          Vyhat = Vyhat + dt_h*(NLyhat -nu*(k2**5)*Vyhat -nu_hypo*(k2**(-0))**Vyhat);
+          u_hat = u_hat + dt_h*(NLxhat -nu*(k2**5)*u_hat -nu_hypo*(k2**(-0))**u_hat);
+          v_hat = v_hat + dt_h*(NLyhat -nu*(k2**5)*v_hat -nu_hypo*(k2**(-0))**v_hat);
           oNLxhat = NLxhat;
           oNLyhat = NLyhat;
     #---Midpoint time-integration----
     elif(istep==1):
-          Vxhat = Vxhat_t0 + dt*(NLxhat -nu*(k2**5)*Vxhat -nu_hypo*(k2**(-0))*Vxhat);
-          Vyhat = Vyhat_t0 + dt*(NLyhat -nu*(k2**5)*Vyhat -nu_hypo*(k2**(-0))*Vyhat);          
+          u_hat = u_hat_t0 + dt*(NLxhat -nu*(k2**5)*u_hat -nu_hypo*(k2**(-0))*u_hat);
+          v_hat = v_hat_t0 + dt*(NLyhat -nu*(k2**5)*v_hat -nu_hypo*(k2**(-0))*v_hat);
+
     #---Adam-Bashforth integration---
     else:
-          Vxhat = Vxhat + dt*(1.5*NLxhat - 0.5*oNLxhat*k2_exp);
-          Vyhat = Vyhat + dt*(1.5*NLyhat - 0.5*oNLyhat*k2_exp);
-          Vxhat = Vxhat*k2_exp;
-          Vyhat = Vyhat*k2_exp;
-          Vxhat = Vxhat;
-          Vyhat = Vyhat;
+          u_hat = u_hat + dt*(1.5*NLxhat - 0.5*oNLxhat*k2_exp);
+          v_hat = v_hat + dt*(1.5*NLyhat - 0.5*oNLyhat*k2_exp);
+          u_hat = u_hat*k2_exp;
+          v_hat = v_hat*k2_exp;
+          u_hat = u_hat;
+          v_hat = v_hat;
 
           oNLxhat=NLxhat;
           oNLyhat=NLyhat;
     #output vorticity contour
     if(istep%diag_out_step==0):
-        output(Wz, x, y, Nx, Ny, rank, t)
+        output(omega, x, y, Nx, Ny, rank, t)
         if rank==0:
             print('simulation time')
             print(MPI.Wtime()-wt)
