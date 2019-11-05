@@ -1,16 +1,6 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sun Nov 27 15:14:22 2016
-
-@author: Xin
-"""
 # solve 2-D incompressible NS equations using spectral method
-import matplotlib
 
-matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import sys
-import os.path
 from numpy import *
 from numpy import max as npmax
 from numpy.fft import fftfreq, fft, ifft, fft2, ifft2, fftshift, ifftshift
@@ -18,41 +8,35 @@ from mpi4py import MPI
 from tqdm import tqdm
 import matplotlib.animation as animation
 
-parent = os.path.abspath(os.path.join(os.path.dirname(__file__), '.'))
-sys.path.append(parent)
+#parent = os.path.abspath(os.path.join(os.path.dirname(__file__), '.'))
+#sys.path.append(parent)
 
 # parameters
-new = 1;
-Nstep = 2500000;  # no. of steps
+tend = 10
+dt = 1e-3
+Nstep = int(ceil(tend / dt))
 N = Nx = Ny = 64;  # grid size
 t = 0;
-nu = 1e-4;  # viscosity
-#nu_hypo = 2e-3;  # hypo-viscosity
-dt = 1e-3;  # time-step
-#dt_h = dt / 2;  # half-time step
-ic_type = 2  # 1 for Taylor-Green init_cond; 2 for random init_cond
-k_ic = 1;  # initial wavenumber for Taylor green forcing
-diag_out_step = 0.02*Nstep;  # frequency of outputting diagnostics
-
-fig = plt.figure()
-ims = []
+nu = 1e-2;  # viscosity
+aniNr = 0.02*Nstep
+save_dt = 1e-4
+save_every = Nstep * save_dt
+save_interval = int(ceil(Nstep / save_every))
+t_list = linspace(0,tend,1/save_dt+1)
 
 # ------------MPI setup---------
 comm = MPI.COMM_WORLD
 num_processes = comm.Get_size()
 rank = comm.Get_rank()
+Np = int(N / num_processes)
 # slab decomposition, split arrays in x direction in physical space, in ky direction in
 # Fourier space
-Np = int(N / num_processes)
-
-# ---------declare functions that will be used----------
-
-# ---------2D FFT and IFFT-----------
 Uc_hat = empty((N, Np), dtype=complex)
 Uc_hatT = empty((Np, N), dtype=complex)
 U_mpi = empty((num_processes, Np, Np), dtype=complex)
 
-
+a = [1./6.,1./3.,1./3.,1./6.]
+b = [0.5,0.5,1.]
 # inverse FFT
 def ifftn_mpi(fu, u):
     Uc_hat[:] = ifftshift(ifft(fftshift(fu), axis=0))
@@ -71,88 +55,22 @@ def fftn_mpi(u, fu):
     return fu
 
 
-# initialize x,y kx, ky coordinate
-def IC_coor(Nx, Ny, Np, dx, dy, rank, num_processes):
-    x = zeros((Np, Ny), dtype=float);
-    y = zeros((Np, Ny), dtype=float);
-    kx = zeros((Nx, Np), dtype=float);
-    ky = zeros((Nx, Np), dtype=float);
-    for j in range(Ny):
-        x[0:Np, j] = range(Np);
-        if num_processes == 1:
-            x[0:Nx, j] = range(int(-Nx / 2), int(Nx / 2));
-    # offset for mpi
-    if num_processes != 1:
-        x = x - (num_processes / 2 - rank) * Np
-    x = x * dx;
-    for i in range(Np):
-        y[i, 0:Ny] = range(int(-Ny / 2), int(Ny / 2));
-    y = y * dy;
-
-    for j in range(Np):
-        kx[0:Nx, j] = range(int(-Nx / 2), int(Nx / 2));
-    for i in range(Nx):
-        ky[i, 0:Np] = range(Np);
-        if num_processes == 1:
-            ky[i, 0:Ny] = range(int(-Ny / 2), int(Ny / 2));
-    # offset for mpi
-    if num_processes != 1:
-        ky = ky - (num_processes / 2 - rank) * Np
-
-    k2 = kx ** 2 + ky ** 2;
-    for i in range(Nx):
-        for j in range(Np):
-            if (k2[i, j] == 0):
-                k2[i, j] = 1e-5;  # so that I do not divide by 0 below when using
-            # projection operator
-    k2_inv = 1 / where(k2 == 0, 1, k2).astype(float)
-    #k2_exp = exp(-nu * (k2 ** 5) * dt - nu_hypo * dt);
-    return x, y, kx, ky, k2,k2_inv
-
-
-# ---------Dealiasing function----
-def delias(u_hat, v_hat, Nx, Np, k2):
-    # use 1/3 rule to remove values of wavenumber >= Nx/3
-    for i in range(Nx):
-        for j in range(Np):
-            if (sqrt(k2[i, j]) >= Nx / 3.):
-                u_hat[i, j] = 0;
-                v_hat[i, j] = 0;
-    # Projection operator on velocity fields to make them solenoidal-----
-    tmp = (kx * u_hat + ky * v_hat) / k2;
-    u_hat = u_hat - kx * tmp;
-    v_hat = v_hat - ky * tmp;
-    return u_hat, v_hat
-
-
 # ----Initialize Velocity in Fourier space-----------
-def IC_condition(ic_type, k_ic, kx, ky, Nx, Np):
+def IC_condition(Nx, Np):
     # taylor green vorticity field
     u_hat = zeros((Nx, Np), dtype=complex);
     v_hat = zeros((Nx, Np), dtype=complex);
-    if (new == 1 and ic_type == 1):
-        for iss in [-1, 1]:
-            for jss in [-1, 1]:
-                for i in range(Nx):
-                    for j in range(Np):
-                        if (int(kx[i, j]) == iss * k_ic and int(ky[i, j]) == jss * k_ic):
-                            u_hat[i, j] = -1j * iss;
-                            v_hat[i, j] = -1j * (-jss);
-        # Set total energy to 1
-        u_hat = 0.5 * u_hat;
-        v_hat = 0.5 * v_hat;
     # generate random velocity field
-    elif (new == 1 and ic_type == 2):
-        u = random.rand(Np, Ny)
-        v = random.rand(Np, Ny)
-        u_hat = fftn_mpi(u, u_hat)
-        v_hat = fftn_mpi(v, v_hat)
+    u = random.rand(Np, Ny)
+    v = random.rand(Np, Ny)
+    u_hat = fftn_mpi(u, u_hat)
+    v_hat = fftn_mpi(v, v_hat)
     return u_hat, v_hat
 
 
 # ------output function----
 # this function output vorticty contour
-def output(omega, x, y, Nx, Ny, rank, time, plotstring):
+def output(save_counter, omega, x, y, Nx, Ny, rank, time, plotstring):
     # collect values to root
     omega_all = comm.gather(omega, root=0)
     u_all = comm.gather(u, root=0)
@@ -180,7 +98,7 @@ def output(omega, x, y, Nx, Ny, rank, time, plotstring):
             v_all = asarray(v_all).reshape(Nx, Ny)
             x_all = asarray(x_all).reshape(Nx, Ny)
             y_all = asarray(y_all).reshape(Nx, Ny)
-            #plt.contourf(x_all, y_all, (u_all ** 2 + v_all ** 2), cmap='jet')
+            # plt.contourf(x_all, y_all, (u_all ** 2 + v_all ** 2), cmap='jet')
             plt.imshow((u_all ** 2 + v_all ** 2), cmap='jet')
             delimiter = ''
             title = delimiter.join(['Velocity contour, time=', str(time)])
@@ -200,8 +118,14 @@ def output(omega, x, y, Nx, Ny, rank, time, plotstring):
             omega_all = asarray(omega_all).reshape(Nx, Ny)
             im = plt.imshow(omega_all, cmap='jet', animated=True)
             ims.append([im])
-# --------------finish declaration of functions-------
+        if plotstring == 'store':
+            omega_all = asarray(omega_all).reshape(Nx, Ny)
+            u_all = asarray(u_all).reshape(Nx, Ny)
+            v_all = asarray(v_all).reshape(Nx, Ny)
 
+            u_storage[save_counter] = u_all
+            v_storage[save_counter] = v_all
+            omega_storage[save_counter] = omega_all
 
 # -----------GRID setup-----------
 Lx = 2 * pi;
@@ -209,89 +133,105 @@ Ly = 2 * pi;
 dx = Lx / Nx;
 dy = Ly / Ny;
 
-# obtain x, y, kx, ky
-x, y, kx, ky, k2,k2_inv = IC_coor(Nx, Ny, Np, dx, dy, rank, num_processes)
+Xmesh = mgrid[rank * Np:(rank + 1) * Np, :N].astype(float) * Lx / N
+X = Xmesh[0]
+Y = Xmesh[1]
+x = Y[0]
+y = Y[0]
+kx = fftfreq(N, 1. / N)
+ky = kx.copy()
+K = array(meshgrid(kx, ky[rank * Np:(rank + 1) * Np], indexing='ij'), dtype=int)
+Kx = K[0]
+Ky = K[1]
+K2 = sum(K * K, 0, dtype=int)
+K2[0][0] = 1
+K2_inv = 1 / where(K2 == 0, 1, K2).astype(float)
+
 
 kmax_dealias = 2. / 3. * (N / 2 + 1)
-dealias = array(
-    (kx < kmax_dealias) * (ky < kmax_dealias),
-    dtype=bool)
+dealias = array((Kx < kmax_dealias) * (Ky < kmax_dealias),dtype=bool)
+
 # ----Initialize Variables-------(hat denotes variables in Fourier space,)
-# velocity
 u_hat = zeros((Nx, Np), dtype=complex);
 v_hat = zeros((Nx, Np), dtype=complex);
-# Vorticity
-omega_hat = zeros((Nx, Np), dtype=complex);
-# Nonlinear term
-NLxhat = zeros((Nx, Np), dtype=complex);
-NLyhat = zeros((Nx, Np), dtype=complex);
-rhs = zeros((Nx,Np),dtype=complex);
-psi_hat = zeros((Nx,Np),dtype=complex);
-visc_term_complex = zeros((Ny,Np),dtype=complex)
-# variables in physical space
 u = zeros((Np, Ny), dtype=float);
 v = zeros((Np, Ny), dtype=float);
+omega_hat0 = zeros((Nx, Np), dtype=complex);
+omega_hat1 = zeros((Nx, Np), dtype=complex);
+omega_hat = zeros((Nx, Np), dtype=complex);
 omega = zeros((Np, Ny), dtype=float);
-omx = zeros((Np,Ny),dtype=float);
-omy = zeros((Np,Ny),dtype=float);
-visc_term_real = zeros((Np,Ny),dtype=float)
-
+omega_kx = zeros((Np, Ny), dtype=float);
+omega_ky = zeros((Np, Ny), dtype=float);
+v_grad_omega = zeros((Np, Ny), dtype=float);
+psi_hat = zeros((Nx, Np), dtype=complex);
+visc_term_complex = zeros((Ny, Np), dtype=complex)
+v_grad_omega_hat = zeros((Ny, Np), dtype=complex)
+u_storage = empty((save_interval + 1, Nx, Nx), dtype=float)
+v_storage = empty((save_interval + 1, Nx, Nx), dtype=float)
+omega_storage = empty((save_interval + 1, Nx, Nx), dtype=float)
 # generate initial velocity field
-u_hat, v_hat = IC_condition(ic_type, k_ic, kx, ky, Nx, Np)
+u_hat, v_hat = IC_condition(Nx, Np)*dealias
 
-# ------Dealiasing------------------------------------------------
-#u_hat, v_hat = delias(u_hat, v_hat, Nx, Np, k2)
-#
-# ------Storing variables for later use in time integration--------
-omega_hat_t0 = 1j * (kx * v_hat - ky * u_hat);
 
-#
-
+omega_hat_t0 = 1j * (Kx * v_hat - Ky * u_hat);
 step = 1
 pbar = tqdm(total=int(Nstep))
+save_counter = 0
+plotstring=('VelocityAnimation')
+fig = plt.figure()
+ims = []
 
 # ----Main Loop-----------
 for n in range(Nstep + 1):
-    # ------Dealiasing
- #   u_hat, v_hat = delias(u_hat, v_hat, Nx, Np, k2)
-    if n==0:
+    if n == 0:
         omega_hat = omega_hat_t0
-        ''' random.seed(1969)
-        omega_hat[0, 4] = random.uniform() + 1j * random.uniform()
-        omega_hat[1, 1] = random.uniform() + 1j * random.uniform()
-        omega_hat[3, 0] = random.uniform() + 1j * random.uniform()
-        omega_hat[2, 3] = random.uniform() + 1j * random.uniform()
-        omega = ifftn_mpi(omega_hat,omega)
-        omega = omega/npmax(omega)
-        omega_hat = fftn_mpi(omega,omega_hat)
-        print('using first omega') 
-        '''
-    else:
-        omega_hat = fftn_mpi(omega,omega_hat)
-    #omega_hat = fftn_mpi(omega, omega_hat)
-    psi_hat = omega_hat * k2_inv
-    u = ifftn_mpi(-1j*ky*psi_hat,u)
-    v = ifftn_mpi(1j*kx*psi_hat,v)
+
+    psi_hat = -omega_hat * K2_inv
+    u_hat = 1j * Ky * psi_hat
+    v_hat = -1j * Kx * psi_hat
+    #u = real(ifftn_mpi(u_hat,u))
+    #v = real(ifftn_mpi(v_hat,v))
+    #omega_kx =  ifftn_mpi(Kx*omega_hat,omega_kx)
+    #omega_ky =  ifftn_mpi(Ky*omega_hat,omega_ky)
+    v_grad_omega = u*omega_kx+v*omega_ky
+    v_grad_omega_hat = fftn_mpi(v_grad_omega,v_grad_omega_hat)*dealias
+#    v_grad_omega_hat *= dealias
+    visc_term_complex = -nu * K2 * omega_hat
 
 
-    # Calculate non-linear term in x-space
-    omx = ifftn_mpi(1j*kx*omega_hat*dealias,omx)
-    omy = ifftn_mpi(1j*ky*omega_hat*dealias,omy)
-    visc_term_complex = -nu*k2*omega_hat
-    visc_term_real    = ifftn_mpi(visc_term_complex,visc_term_real)
+    rhs_hat = visc_term_complex - u_hat * 1j * Kx * omega_hat * dealias - v_hat * 1j * \
+              Ky * omega_hat * dealias
+    #rhs_hat = visc_term_complex -v_grad_omega_hat
 
-    rhs = visc_term_real-u*omx-v*omy
 
-    # Integrate in time
-    # ---Euler for 1/2-step-----------
-    omega = omega + dt * rhs
+    omega_hat1 = omega_hat0 = omega_hat
+    for rk in range(4):
+        if rk<3:omega_hat=omega_hat0+b[rk]*dt*rhs_hat
+        omega_hat1+=a[rk]*dt*rhs_hat
+    omega_hat = omega_hat1
 
-    # output vorticity contour
-    if (n % diag_out_step == 0):
-        output(omega, x, y, Nx, Ny, rank, t, 'VelocityAnimation')
+
+
+    #omega_hat = omega_hat + dt * rhs_hat
+    '''
+    if n%200==0:
+        plt.imshow(sqrt(u**2+v**2),cmap='jet')
+        plt.pause(0.05)
+    '''
+    if (n % aniNr == 0):
+        u = ifftn_mpi(u_hat, u)
+        v = ifftn_mpi(v_hat, v)
+        omega = ifftn_mpi(omega_hat, omega)
+        output(save_counter, omega, x, y, Nx, Ny, rank, t, plotstring)
+        save_counter += 1
     t = t + dt;
     step += 1
     pbar.update(1)
-ani = animation.ArtistAnimation(fig, ims, interval=15, blit=True,
-                                        repeat_delay=None)
-ani.save('animationVelocity.gif', writer='imagemagick', fps=30)
+if plotstring in ['VelocityAnimation','VorticityAnimation']:
+    ani = animation.ArtistAnimation(fig, ims, interval=15, blit=True,repeat_delay=None)
+    ani.save('animationVelocity.gif', writer='imagemagick', fps=30)
+if plotstring=='store':
+    save('datafiles/u_vel', u_storage)
+    save('datafiles/v_vel', v_storage)
+    save('datafiles/omega', omega_storage)
+    save('datafiles/tlist',t_list)
