@@ -2,6 +2,7 @@
 
 import matplotlib.pyplot as plt
 from numpy import *
+from numpy.random import seed, uniform
 from numpy import max as npmax
 from numpy.fft import fftfreq, fft, ifft, fft2, ifft2, fftshift, ifftshift
 from mpi4py import MPI
@@ -12,12 +13,13 @@ import matplotlib.animation as animation
 # sys.path.append(parent)
 
 # parameters
-tend = 100
-dt = 1e-2
+tend = 500
+dt = 1e-1
 Nstep = int(ceil(tend / dt))
-N = Nx = Ny = 128;  # grid size
+N = Nx = Ny = 64;  # grid size
 t = 0;
 nu = 1e-4# viscosity
+ICchoice = 'omega1'
 aniNr = 0.02 * Nstep
 save_dt = 1e-4
 save_every = Nstep * save_dt
@@ -58,12 +60,55 @@ def fftn_mpi(u, fu):
 
 
 # ----Initialize Velocity in Fourier space-----------
-def IC_condition(Nx, Np,u_hat,v_hat):
-    u = random.rand(Np, Ny)
-    v = random.rand(Np, Ny)
-    u_hat = fftn_mpi(u, u_hat)
-    v_hat = fftn_mpi(v, v_hat)
-    return u_hat, v_hat
+def IC_condition(Nx, Np,u,v,u_hat,v_hat,ICchoice,omega,omega_hat,X,Y):
+    if ICchoice == 'randomVel':
+        u = random.rand(Np, Ny)
+        v = random.rand(Np, Ny)
+        u = u/npmax(u)
+        v = v/npmax(v)
+        u_hat = fftn_mpi(u, u_hat)
+        v_hat = fftn_mpi(v, v_hat)
+        omega_hat = 1j * (Kx * v_hat - Ky * u_hat);
+    if ICchoice == 'Vel1':
+        if rank==0:
+            # u =
+            ## v =
+            #u = u/npmax(u)
+            #v = v/npmax(v)
+            #u_hat = fftn_mpi(u, u_hat)
+            #v_hat = fftn_mpi(v, v_hat)
+            u_hat[2,2] = 5 + 10j
+            v_hat[2, 2] = 5 + 10j
+            u_hat[5, 2] = 5 + 10j
+            v_hat[5, 2] = 5 + 10j
+            u_hat[2, 3] = 5 + 10j
+            v_hat[2, 3] = 5 + 10j
+        u = ifftn_mpi(u_hat,u)
+        v = ifftn_mpi(v_hat,v)
+        u = u / npmax(u)
+        v = v / npmax(v)
+        u_hat = fftn_mpi(u, u_hat)
+        v_hat = fftn_mpi(v, v_hat)
+        plt.imshow(u**2+v**2)
+        plt.show()
+        omega_hat = 1j * (Kx * v_hat - Ky * u_hat);
+    if ICchoice == 'omegahat1':
+        if rank == 0:
+            random.seed(1969)
+            omega_hat[0, 4] = random.uniform() + 1j * random.uniform()
+            omega_hat[1, 1] = random.uniform() + 1j * random.uniform()
+            omega_hat[3, 0] = random.uniform() + 1j * random.uniform()
+            omega_hat[2, 3] = random.uniform() + 1j * random.uniform()
+
+        omega = abs(ifftn_mpi(omega_hat,omega))
+        omega = omega/npmax(omega)
+        omega_hat = fftn_mpi(omega,omega_hat)
+    if ICchoice == 'omegahat2':
+        omega =  sin(10*X)*sin(4*X) * cos(10*Y) *cos(3*Y)
+        plt.imshow(omega,cmap='jet')
+        plt.show()
+        omega_hat = fftn_mpi(omega,omega_hat)
+    return omega_hat
 
 
 # ------output function----
@@ -209,21 +254,26 @@ omega_kx = zeros((Np, Ny), dtype=float);
 omega_ky = zeros((Np, Ny), dtype=float);
 v_grad_omega = zeros((Np, Ny), dtype=float);
 psi_hat = zeros((Nx, Np), dtype=complex);
+rhs_hat = zeros((Nx, Np), dtype=complex);
+rhs = zeros((Np, Nx), dtype=float);
 visc_term_complex = zeros((Ny, Np), dtype=complex)
+visc_term_real = zeros((Np, Ny), dtype=float)
 v_grad_omega_hat = zeros((Ny, Np), dtype=complex)
 u_storage = empty((save_interval + 1, Nx, Nx), dtype=float)
 v_storage = empty((save_interval + 1, Nx, Nx), dtype=float)
 omega_storage = empty((save_interval + 1, Nx, Nx), dtype=float)
 # generate initial velocity field
-u_hat, v_hat = IC_condition(Nx, Np,u_hat,v_hat)*dealias
-
-omega_hat_t0 = 1j * (Kx * v_hat - Ky * u_hat);
+omega_hat_t0 = IC_condition(Nx, Np,u,v,u_hat,v_hat,ICchoice,omega,omega_hat,x,y)
+omega = ifftn_mpi(omega_hat0,omega)
+#omega_hat_t0 = 1j * (Kx * v_hat - Ky * u_hat)*dealias;
 step = 1
 pbar = tqdm(total=int(Nstep))
 save_counter = 0
-plotstring = ('VelocityAnimation')
+plotstring = ('VorticityAnimation')
 fig = plt.figure()
 ims = []
+
+
 
 # ----Main Loop-----------
 for n in range(Nstep + 1):
@@ -231,16 +281,7 @@ for n in range(Nstep + 1):
         # TODO check what needs to be done to use IC from matlab program
         # TODO very low convection? bug? compare with animation plot on github
         omega_hat = omega_hat_t0
-        '''
-        if rank==0:
-            
-            random.seed(1969)
-            omega_hat[0, 4] = random.uniform() + 1j * random.uniform()
-            omega_hat[1, 1] = random.uniform() + 1j * random.uniform()
-            omega_hat[3, 0] = random.uniform() + 1j * random.uniform()
-            omega_hat[2, 3] = random.uniform() + 1j * random.uniform()
-        '''
-    #psi_hat = -omega_hat * K2_inv
+
     u_hat = iky_over_K2*omega_hat
     v_hat = ikx_over_K2*omega_hat
     u = ifftn_mpi(u_hat, u)
@@ -248,21 +289,23 @@ for n in range(Nstep + 1):
 
     omega_kx = ifftn_mpi(Kx*omega_hat, omega_kx)
     omega_ky = ifftn_mpi(Ky*omega_hat, omega_ky)
-    v_grad_omega = u * omega_kx + v * omega_ky
+    v_grad_omega = (u * omega_kx + v * omega_ky)
     v_grad_omega_hat = fftn_mpi(v_grad_omega, v_grad_omega_hat) * dealias
-    #    v_grad_omega_hat *= dealias
     visc_term_complex = -nu * K2 * omega_hat
 
     # rhs_hat = visc_term_complex - u_hat * 1j * Kx * omega_hat * dealias - v_hat * 1j * \
     #          Ky * omega_hat * dealias
     rhs_hat = visc_term_complex - v_grad_omega_hat
-
+    rhs = ifftn_mpi(rhs_hat,rhs)
+    '''
     omega_hat1 = omega_hat0 = omega_hat
     for rk in range(4):
         if rk < 3: omega_hat = omega_hat0 + b[rk] * dt * rhs_hat
         omega_hat1 += a[rk] * dt * rhs_hat
     omega_hat = omega_hat1
-
+    '''
+    omega = omega + dt*rhs
+    omega_hat = fftn_mpi(omega,omega_hat)
     if (n % aniNr == 0):
         omega = ifftn_mpi(omega_hat, omega)
         output(save_counter, omega,u,v, x, y, Nx, Ny, rank, t, plotstring)
