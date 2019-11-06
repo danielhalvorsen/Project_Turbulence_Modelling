@@ -15,7 +15,7 @@ sys.path.append(parent)
 
 # parameters
 new = 1;
-Nstep = 100000;  # no. of steps
+Nstep = 10000;  # no. of steps
 N = Nx = Ny = 64;  # grid size
 t = 0;
 nu = 5e-10;  # viscosity
@@ -24,7 +24,8 @@ dt = 5e-5;  # time-step
 dt_h = dt / 2;  # half-time step
 ic_type = 2  # 1 for Taylor-Green init_cond; 2 for random init_cond
 k_ic = 1;  # initial wavenumber for Taylor green forcing
-diag_out_step = 500;  # frequency of outputting diagnostics
+diag_out_step = 0.02 * Nstep;  # frequency of outputting diagnostics
+
 
 fig = plt.figure()
 ims = []
@@ -188,7 +189,8 @@ def output(omega, x, y, Nx, Ny, rank, time, plotstring):
             x_all = asarray(x_all).reshape(Nx, Ny)
             y_all = asarray(y_all).reshape(Nx, Ny)
             # plt.contourf(x_all, y_all, (u_all ** 2 + v_all ** 2), cmap='jet')
-            im = plt.imshow(abs((u_all ** 2) + (v_all ** 2)), cmap='jet', animated=True)
+#            im = plt.imshow(abs((u_all ** 2) + (v_all ** 2)), cmap='jet', animated=True)
+            im = plt.imshow(u_all, cmap='jet', animated=True)
             ims.append([im])
         if plotstring == 'VorticityAnimation':
             omega_all = asarray(omega_all).reshape(Nx, Ny)
@@ -295,10 +297,9 @@ for n in range(Nstep + 1):
     # output vorticity contour
     if (n % diag_out_step == 0):
         output(omega, x, y, Nx, Ny, rank, t, 'VelocityAnimation')
-        if rank == 0:
-            print('simulation time')
-            print(MPI.Wtime() - wt)
-
+        #if rank == 0:
+            #print('simulation time')
+            #print(MPI.Wtime() - wt)
     t = t + dt;
     step += 1
     pbar.update(1)
