@@ -229,7 +229,7 @@ ims = []
 for n in range(Nstep + 1):
     if n == 0:
         # TODO check what needs to be done to use IC from matlab program
-        # TODO very low convection? bug?
+        # TODO very low convection? bug? compare with animation plot on github
         omega_hat = omega_hat_t0
         '''
         if rank==0:
