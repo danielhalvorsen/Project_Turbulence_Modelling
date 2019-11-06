@@ -13,13 +13,13 @@ import matplotlib.animation as animation
 # sys.path.append(parent)
 
 # parameters
-tend = 500
-dt = 1e-1
+tend = 50
+dt = 1e-2
 Nstep = int(ceil(tend / dt))
 N = Nx = Ny = 64;  # grid size
-t = 0;
-nu = 1e-4# viscosity
-ICchoice = 'omega1'
+t = 0
+nu = 5e-4  # viscosity
+ICchoice = 'omega2'
 aniNr = 0.02 * Nstep
 save_dt = 1e-4
 save_every = Nstep * save_dt
@@ -43,53 +43,53 @@ b = [0.5, 0.5, 1.]
 
 # inverse FFT
 def ifftn_mpi(fu, u):
-    Uc_hat[:] = ifftshift(ifft(fftshift(fu), axis=0))
+    Uc_hat[:] = ifft(fu)
     comm.Alltoall([Uc_hat, MPI.DOUBLE_COMPLEX], [U_mpi, MPI.DOUBLE_COMPLEX])
     Uc_hatT[:] = rollaxis(U_mpi, 1).reshape(Uc_hatT.shape)
-    u[:] = ifftshift(ifft(fftshift(Uc_hatT), axis=1))
+    u[:] = ifft(Uc_hatT)
     return u
 
 
 # FFT
 def fftn_mpi(u, fu):
-    Uc_hatT[:] = fftshift(fft(ifftshift(u), axis=1))
+    Uc_hatT[:] = fft(u)
     U_mpi[:] = rollaxis(Uc_hatT.reshape(Np, num_processes, Np), 1)
     comm.Alltoall([U_mpi, MPI.DOUBLE_COMPLEX], [fu, MPI.DOUBLE_COMPLEX])
-    fu[:] = fftshift(fft(ifftshift(fu), axis=0))
+    fu[:] = fft(fu)
     return fu
 
 
 # ----Initialize Velocity in Fourier space-----------
-def IC_condition(Nx, Np,u,v,u_hat,v_hat,ICchoice,omega,omega_hat,X,Y):
+def IC_condition(Nx, Np, u, v, u_hat, v_hat, ICchoice, omega, omega_hat, X, Y):
     if ICchoice == 'randomVel':
         u = random.rand(Np, Ny)
         v = random.rand(Np, Ny)
-        u = u/npmax(u)
-        v = v/npmax(v)
+        u = u / npmax(u)
+        v = v / npmax(v)
         u_hat = fftn_mpi(u, u_hat)
         v_hat = fftn_mpi(v, v_hat)
         omega_hat = 1j * (Kx * v_hat - Ky * u_hat);
     if ICchoice == 'Vel1':
-        if rank==0:
+        if rank == 0:
             # u =
             ## v =
-            #u = u/npmax(u)
-            #v = v/npmax(v)
-            #u_hat = fftn_mpi(u, u_hat)
-            #v_hat = fftn_mpi(v, v_hat)
-            u_hat[2,2] = 5 + 10j
+            # u = u/npmax(u)
+            # v = v/npmax(v)
+            # u_hat = fftn_mpi(u, u_hat)
+            # v_hat = fftn_mpi(v, v_hat)
+            u_hat[2, 2] = 5 + 10j
             v_hat[2, 2] = 5 + 10j
             u_hat[5, 2] = 5 + 10j
             v_hat[5, 2] = 5 + 10j
             u_hat[2, 3] = 5 + 10j
             v_hat[2, 3] = 5 + 10j
-        u = ifftn_mpi(u_hat,u)
-        v = ifftn_mpi(v_hat,v)
+        u = ifftn_mpi(u_hat, u)
+        v = ifftn_mpi(v_hat, v)
         u = u / npmax(u)
         v = v / npmax(v)
         u_hat = fftn_mpi(u, u_hat)
         v_hat = fftn_mpi(v, v_hat)
-        plt.imshow(u**2+v**2)
+        plt.imshow(u ** 2 + v ** 2)
         plt.show()
         omega_hat = 1j * (Kx * v_hat - Ky * u_hat);
     if ICchoice == 'omegahat1':
@@ -100,20 +100,31 @@ def IC_condition(Nx, Np,u,v,u_hat,v_hat,ICchoice,omega,omega_hat,X,Y):
             omega_hat[3, 0] = random.uniform() + 1j * random.uniform()
             omega_hat[2, 3] = random.uniform() + 1j * random.uniform()
 
-        omega = abs(ifftn_mpi(omega_hat,omega))
-        omega = omega/npmax(omega)
-        omega_hat = fftn_mpi(omega,omega_hat)
-    if ICchoice == 'omegahat2':
-        omega =  sin(10*X)*sin(4*X) * cos(10*Y) *cos(3*Y)
-        plt.imshow(omega,cmap='jet')
+        omega = abs(ifftn_mpi(omega_hat, omega))
+        omega = omega / npmax(omega)
+        omega_hat = fftn_mpi(omega, omega_hat)
+    if ICchoice == 'omega1':
+        omega = sin(10 * X) * sin(4 * X) * cos(10 * Y) * cos(3 * Y)
+        plt.imshow(omega, cmap='jet')
         plt.show()
-        omega_hat = fftn_mpi(omega,omega_hat)
+        omega_hat = fftn_mpi(omega, omega_hat)
+    if ICchoice == 'omega2':
+        H = exp(-((X - pi + pi / 5)**2 + (Y - pi + pi / 5) ** 2) / 0.3) - exp(
+            -((X - pi - pi / 5)**2 + (Y - pi + pi / 5) ** 2) /0.2) + exp(-((X - pi - pi / 5)**2 + (Y - pi - pi / 5)**2)/0.4);
+        #epsilon = 0.1;
+        #Noise = random.rand(Np, Ny)
+        omega = H#+epsilon*Noise
+       # if rank==0:
+        #    omega_all = comm.gather(omega,root=0)
+         #   omega_all = asarray(omega_all).reshape(Nx, Ny)
+          #  omega_all = omega_all.transpose()
+        omega_hat = fftn_mpi(omega, omega_hat)
     return omega_hat
 
 
 # ------output function----
 # this function output vorticty contour
-def output(save_counter, omega,u,v, x, y, Nx, Ny, rank, time, plotstring):
+def output(save_counter, omega, u, v, x, y, Nx, Ny, rank, time, plotstring):
     # collect values to root
     omega_all = comm.gather(omega, root=0)
     u_all = comm.gather(u, root=0)
@@ -156,11 +167,11 @@ def output(save_counter, omega,u,v, x, y, Nx, Ny, rank, time, plotstring):
             u_all = asarray(u_all).reshape(Nx, Ny)
             v_all = asarray(v_all).reshape(Nx, Ny)
             im = plt.imshow(sqrt((u_all ** 2) + (v_all ** 2)), cmap='jet', animated=True)
-            #im = plt.quiver(x,y,u_all,v_all)
+            # im = plt.quiver(x,y,u_all,v_all)
             ims.append([im])
         if plotstring == 'VorticityAnimation':
             omega_all = asarray(omega_all).reshape(Nx, Ny)
-            im = plt.imshow(abs(omega_all), cmap='jet', animated=True)
+            im = plt.imshow((omega_all), cmap='jet', animated=True)
             ims.append([im])
         if plotstring == 'store':
             omega_all = asarray(omega_all).reshape(Nx, Ny)
@@ -206,10 +217,9 @@ def IC_coor(Nx, Ny, Np, dx, dy, rank, num_processes):
             if (k2[i, j] == 0):
                 k2[i, j] = 1e-5;  # so that I do not divide by 0 below when using
             # projection operator
-    #k2_exp = exp(-nu * (k2 ** 5) * dt - nu_hypo * dt);
+    # k2_exp = exp(-nu * (k2 ** 5) * dt - nu_hypo * dt);
     k2_inv = K2_inv = 1 / where(k2 == 0, 1, k2).astype(float)
-    return x, y, kx, ky, k2,k2_inv
-
+    return x, y, kx, ky, k2, k2_inv
 
 
 # -----------GRID setup-----------
@@ -218,25 +228,28 @@ Ly = 2 * pi;
 dx = Lx / Nx;
 dy = Ly / Ny;
 x, y, Kx, Ky, K2, K2_inv = IC_coor(Nx, Ny, Np, dx, dy, rank, num_processes)
-#TODO check what needs to be done with the wave numbers to get rid of IC_Coor function
-'''
+# TODO check what needs to be done with the wave numbers to get rid of IC_Coor function
+
 Xmesh = mgrid[rank * Np:(rank + 1) * Np, :N].astype(float) * Lx / N
-X = Xmesh[0]
-Y = Xmesh[1]
+X = Xmesh[1]
+Y = Xmesh[0]
+
 x = Y[0]
 y = Y[0]
 kx = fftfreq(N, 1. / N)
 ky = kx
-K = array(meshgrid(kx, ky[rank * Np:(rank + 1) * Np], indexing='ij'), dtype=int)
-Kx = K[0]
-Ky = K[1]
+sx = slice(rank*Np,(rank+1)*Np)
+K = array(meshgrid(kx, ky[sx], indexing='ij'), dtype=int)
+Kx = K[1]
+Ky = K[0]
 K2 = sum(K * K, 0, dtype=int)
+LapHat = K2.copy()
 K2[0][0] = 1
+K2 *=-1
 K2_inv = 1 / where(K2 == 0, 1, K2).astype(float)
-'''
-ikx_over_K2 = 1j*Kx*K2_inv
-iky_over_K2 = 1j*Ky*K2_inv
 
+ikx_over_K2 = 1j * Kx * K2_inv
+iky_over_K2 = 1j * Ky * K2_inv
 
 kmax_dealias = 2. / 3. * (N / 2 + 1)
 dealias = array((abs(Kx) < kmax_dealias) * (abs(Ky) < kmax_dealias), dtype=bool)
@@ -249,6 +262,7 @@ v = zeros((Np, Ny), dtype=float);
 omega_hat0 = zeros((Nx, Np), dtype=complex);
 omega_hat1 = zeros((Nx, Np), dtype=complex);
 omega_hat = zeros((Nx, Np), dtype=complex);
+omega_hat_new = zeros((Nx, Np), dtype=complex);
 omega = zeros((Np, Ny), dtype=float);
 omega_kx = zeros((Np, Ny), dtype=float);
 omega_ky = zeros((Np, Ny), dtype=float);
@@ -262,18 +276,18 @@ v_grad_omega_hat = zeros((Ny, Np), dtype=complex)
 u_storage = empty((save_interval + 1, Nx, Nx), dtype=float)
 v_storage = empty((save_interval + 1, Nx, Nx), dtype=float)
 omega_storage = empty((save_interval + 1, Nx, Nx), dtype=float)
+
 # generate initial velocity field
-omega_hat_t0 = IC_condition(Nx, Np,u,v,u_hat,v_hat,ICchoice,omega,omega_hat,x,y)
-omega = ifftn_mpi(omega_hat0,omega)
-#omega_hat_t0 = 1j * (Kx * v_hat - Ky * u_hat)*dealias;
+omega_hat_t0 = IC_condition(Nx, Np, u, v, u_hat, v_hat, ICchoice, omega, omega_hat, X, Y)
+# omega_hat_t0 = 1j * (Kx * v_hat - Ky * u_hat)*dealias;
+
+
 step = 1
 pbar = tqdm(total=int(Nstep))
 save_counter = 0
 plotstring = ('VorticityAnimation')
 fig = plt.figure()
 ims = []
-
-
 
 # ----Main Loop-----------
 for n in range(Nstep + 1):
@@ -282,21 +296,30 @@ for n in range(Nstep + 1):
         # TODO very low convection? bug? compare with animation plot on github
         omega_hat = omega_hat_t0
 
-    u_hat = iky_over_K2*omega_hat
-    v_hat = ikx_over_K2*omega_hat
+    u_hat = -iky_over_K2 * omega_hat
+    v_hat = ikx_over_K2 * omega_hat
     u = ifftn_mpi(u_hat, u)
     v = ifftn_mpi(v_hat, v)
 
-    omega_kx = ifftn_mpi(Kx*omega_hat, omega_kx)
-    omega_ky = ifftn_mpi(Ky*omega_hat, omega_ky)
+    omega_kx = ifftn_mpi(1j*Kx * omega_hat, omega_kx)
+    omega_ky = ifftn_mpi(1j*Ky * omega_hat, omega_ky)
     v_grad_omega = (u * omega_kx + v * omega_ky)
-    v_grad_omega_hat = fftn_mpi(v_grad_omega, v_grad_omega_hat) * dealias
+    v_grad_omega_hat = fftn_mpi(v_grad_omega, v_grad_omega_hat)
     visc_term_complex = -nu * K2 * omega_hat
 
     # rhs_hat = visc_term_complex - u_hat * 1j * Kx * omega_hat * dealias - v_hat * 1j * \
     #          Ky * omega_hat * dealias
-    rhs_hat = visc_term_complex - v_grad_omega_hat
-    rhs = ifftn_mpi(rhs_hat,rhs)
+ #   rhs_hat = visc_term_complex - v_grad_omega_hat
+  #  rhs = ifftn_mpi(rhs_hat, rhs)
+
+    omega_hat_new = 1 / (1 / dt - 0.5 * nu * K2)*(
+                (1 / dt + 0.5 * nu * K2)* omega_hat - v_grad_omega_hat);
+    omega_hat = omega_hat_new.copy()
+
+    omega = ifftn_mpi(omega_hat,omega)
+    if n%50==0:
+        plt.imshow(omega,cmap='jet')
+        plt.show()
     '''
     omega_hat1 = omega_hat0 = omega_hat
     for rk in range(4):
@@ -304,19 +327,20 @@ for n in range(Nstep + 1):
         omega_hat1 += a[rk] * dt * rhs_hat
     omega_hat = omega_hat1
     '''
-    omega = omega + dt*rhs
-    omega_hat = fftn_mpi(omega,omega_hat)
+#    omega = omega + dt * rhs
+#    omega_hat = fftn_mpi(omega, omega_hat)
     if (n % aniNr == 0):
         omega = ifftn_mpi(omega_hat, omega)
-        output(save_counter, omega,u,v, x, y, Nx, Ny, rank, t, plotstring)
+        output(save_counter, omega, u, v, x, y, Nx, Ny, rank, t, plotstring)
         save_counter += 1
 
     t = t + dt;
     step += 1
     pbar.update(1)
-if rank==0:
+if rank == 0:
     if plotstring in ['VelocityAnimation', 'VorticityAnimation']:
-        ani = animation.ArtistAnimation(fig, ims, interval=15, blit=True, repeat_delay=None)
+        ani = animation.ArtistAnimation(fig, ims, interval=15, blit=True,
+                                        repeat_delay=None)
         ani.save('animationVelocity.gif', writer='imagemagick', fps=30)
     if plotstring == 'store':
         save('datafiles/u_vel', u_storage)
