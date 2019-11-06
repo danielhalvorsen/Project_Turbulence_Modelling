@@ -10,6 +10,7 @@ import scipy.integrate as integrate
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import matplotlib.animation as animation
+from numba import jit
 
 global u, v
 
@@ -89,7 +90,7 @@ def initialize(choice):
         omega_vector = np.reshape(omega, N2, 1)
     return omega_vector
 
-
+#@jit
 def Rhs(t, omega_vector):  # change order of arguments for different ode solver
     global u, v
     omega = np.reshape(omega_vector, ([N, N])).transpose()
@@ -113,14 +114,14 @@ def Rhs(t, omega_vector):  # change order of arguments for different ode solver
 
 def writeToFile(solve):
     print('Writing files... ')
-    np.savetxt('dt_vector.txt', solve.t)
+    np.save('dt_vector', solve.t)
     print('Time list written...')
-    np.savetxt('vorticity.txt', solve.y)
+    np.save('vorticity', solve.y)
     print('Vorticity list written...')
     u_vel, v_vel = convertVorticityToVelocity(solve.y)
-    np.savetxt('u_vel.txt', u_vel)
+    np.save('u_vel', u_vel)
     print('u velocity list written...')
-    np.savetxt('v_vel.txt', v_vel)
+    np.save('v_vel', v_vel)
     print('v-velocity list written...')
     # read with: new_data = np.loadtxt('test.txt')
     print('Finished writing files.')
@@ -147,7 +148,7 @@ def convertVorticityToVelocity(solve):
 # Base constants and spatial grid vectors
 nu = 1e-3
 L = np.pi
-N = int(64)
+N = int(128)
 N2 = int(N ** 2)
 dx = 2 * L / N
 x = np.linspace(1 - N / 2, N / 2, N) * dx
@@ -200,7 +201,7 @@ if (animateOmega or animateVelocity) == True:
                 plt.pause(0.05)
                 ims.append([im])
         if animateVelocity == True:
-            if step % 3 == 0:
+            if step % 5 == 0:
                 im = plt.imshow(np.abs((u ** 2) + (v ** 2)), cmap='jet', animated=True)
                 ims.append([im])
                 plt.pause(0.05)
@@ -243,8 +244,8 @@ if (animateVelocity and animateOmega) == False:
     print('Entering false script')
     # TODO for verification, the maximum dt can be changed in the ODE option argument
     t0 = 0
-    t_end = 15
-    dt = 0.01
+    t_end = 10
+    dt = 0.1
     time_intervals = np.arange(t0, t_end + dt, dt)
     solve = integrate.solve_ivp(Rhs, [0, t_end], omega_vector, method='RK45',
                                 t_eval=time_intervals, rtol=1e-10,
