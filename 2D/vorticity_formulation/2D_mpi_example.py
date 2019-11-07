@@ -1,6 +1,11 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Nov 27 15:14:22 2016
+@author: Xin
+"""
+# solve 2-D incompressible NS equations using spectral method
 import matplotlib
 
-matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import sys
 import os.path
@@ -15,20 +20,16 @@ sys.path.append(parent)
 
 # parameters
 new = 1;
-Nstep = 10000;  # no. of steps
+Nstep = 2500;  # no. of steps
 N = Nx = Ny = 64;  # grid size
 t = 0;
 nu = 5e-10;  # viscosity
 nu_hypo = 2e-3;  # hypo-viscosity
-dt = 5e-5;  # time-step
+dt = 5e-3;  # time-step
 dt_h = dt / 2;  # half-time step
 ic_type = 2  # 1 for Taylor-Green init_cond; 2 for random init_cond
 k_ic = 1;  # initial wavenumber for Taylor green forcing
 diag_out_step = 0.02 * Nstep;  # frequency of outputting diagnostics
-
-
-fig = plt.figure()
-ims = []
 
 # ------------MPI setup---------
 comm = MPI.COMM_WORLD
@@ -96,105 +97,85 @@ def IC_coor(Nx, Ny, Np, dx, dy, rank, num_processes):
     for i in range(Nx):
         for j in range(Np):
             if (k2[i, j] == 0):
-                k2[i, j] = 1e-5;  # so that I do not divide by 0 below when using
-            # projection operator
+                k2[
+                    i, j] = 1e-5;  # so that I do not divide by 0 below when using
+                # projection operator
     k2_exp = exp(-nu * (k2 ** 5) * dt - nu_hypo * dt);
     return x, y, kx, ky, k2, k2_exp
 
 
 # ---------Dealiasing function----
-def delias(u_hat, v_hat, Nx, Np, k2):
+def delias(Vxhat, Vyhat, Nx, Np, k2):
     # use 1/3 rule to remove values of wavenumber >= Nx/3
     for i in range(Nx):
         for j in range(Np):
             if (sqrt(k2[i, j]) >= Nx / 3.):
-                u_hat[i, j] = 0;
-                v_hat[i, j] = 0;
+                Vxhat[i, j] = 0;
+                Vyhat[i, j] = 0;
     # Projection operator on velocity fields to make them solenoidal-----
-    tmp = (kx * u_hat + ky * v_hat) / k2;
-    u_hat = u_hat - kx * tmp;
-    v_hat = v_hat - ky * tmp;
-    return u_hat, v_hat
+    tmp = (kx * Vxhat + ky * Vyhat) / k2;
+    Vxhat = Vxhat - kx * tmp;
+    Vyhat = Vyhat - ky * tmp;
+    return Vxhat, Vyhat
 
 
 # ----Initialize Velocity in Fourier space-----------
 def IC_condition(ic_type, k_ic, kx, ky, Nx, Np):
     # taylor green vorticity field
-    u_hat = zeros((Nx, Np), dtype=complex);
-    v_hat = zeros((Nx, Np), dtype=complex);
+    Vxhat = zeros((Nx, Np), dtype=complex);
+    Vyhat = zeros((Nx, Np), dtype=complex);
     if (new == 1 and ic_type == 1):
         for iss in [-1, 1]:
             for jss in [-1, 1]:
                 for i in range(Nx):
                     for j in range(Np):
                         if (int(kx[i, j]) == iss * k_ic and int(ky[i, j]) == jss * k_ic):
-                            u_hat[i, j] = -1j * iss;
-                            v_hat[i, j] = -1j * (-jss);
-        # Set total energy to 1
-        u_hat = 0.5 * u_hat;
-        v_hat = 0.5 * v_hat;
+                            Vxhat[i, j] = -1j * iss;
+                            Vyhat[i, j] = -1j * (-jss);
+                            # Set total energy to 1
+        Vxhat = 0.5 * Vxhat;
+        Vyhat = 0.5 * Vyhat;
     # generate random velocity field
     elif (new == 1 and ic_type == 2):
-        u = random.rand(Np, Ny)
-        v = random.rand(Np, Ny)
-        u_hat = fftn_mpi(u, u_hat)
-        v_hat = fftn_mpi(v, v_hat)
-    return u_hat, v_hat
+        Vx = random.rand(Np, Ny)
+        Vy = random.rand(Np, Ny)
+        Vxhat = fftn_mpi(Vx, Vxhat)
+        Vyhat = fftn_mpi(Vy, Vyhat)
+    return Vxhat, Vyhat
 
 
 # ------output function----
 # this function output vorticty contour
-def output(omega, x, y, Nx, Ny, rank, time, plotstring):
+def output(Wz, x, y, Nx, Ny, rank, time,plotstring):
     # collect values to root
-    omega_all = comm.gather(omega, root=0)
-    u_all = comm.gather(u, root=0)
-    v_all = comm.gather(v, root=0)
+    Wz_all = comm.gather(Wz, root=0)
     x_all = comm.gather(x, root=0)
     y_all = comm.gather(y, root=0)
     if rank == 0:
-        if plotstring == 'Vorticity':
-            # reshape the ''list''
-            omega_all = asarray(omega_all).reshape(Nx, Ny)
-            x_all = asarray(x_all).reshape(Nx, Ny)
-            y_all = asarray(y_all).reshape(Nx, Ny)
-            plt.contourf(x_all, y_all, omega_all, cmap='jet')
+        # reshape the ''list''
+        Wz_all = asarray(Wz_all).reshape(Nx, Ny)
+        x_all = asarray(x_all).reshape(Nx, Ny)
+        y_all = asarray(y_all).reshape(Nx, Ny)
+        if plotstring == 'save':
+            plt.contourf(x_all, y_all, Wz_all)
             delimiter = ''
             title = delimiter.join(['vorticity contour, time=', str(time)])
             plt.xlabel('x')
             plt.ylabel('y')
             plt.title(title)
             plt.show()
-            filename = delimiter.join(['vorticity_t=', str(time), '.png'])
-            plt.savefig(filename, format='png')
-        if plotstring == 'Velocity':
-            # reshape the ''list''
-            u_all = asarray(u_all).reshape(Nx, Ny)
-            v_all = asarray(v_all).reshape(Nx, Ny)
-            x_all = asarray(x_all).reshape(Nx, Ny)
-            y_all = asarray(y_all).reshape(Nx, Ny)
-            #plt.contourf(x_all, y_all, (u_all ** 2 + v_all ** 2), cmap='jet')
-            plt.imshow((u_all ** 2 + v_all ** 2), cmap='jet')
-            delimiter = ''
-            title = delimiter.join(['Velocity contour, time=', str(time)])
-            plt.xlabel('x')
-            plt.ylabel('y')
-            plt.title(title)
-            plt.show()
-            filename = delimiter.join(['velocity_t=', str(time), '.png'])
+            filename = delimiter.join(['vorticity@t=', str(time), '.png'])
             plt.savefig(filename, format='png')
         if plotstring == 'VelocityAnimation':
             # reshape the ''list''
             u_all = asarray(u_all).reshape(Nx, Ny)
             v_all = asarray(v_all).reshape(Nx, Ny)
-            x_all = asarray(x_all).reshape(Nx, Ny)
-            y_all = asarray(y_all).reshape(Nx, Ny)
-            # plt.contourf(x_all, y_all, (u_all ** 2 + v_all ** 2), cmap='jet')
-#            im = plt.imshow(abs((u_all ** 2) + (v_all ** 2)), cmap='jet', animated=True)
-            im = plt.imshow(u_all, cmap='jet', animated=True)
+            im = plt.imshow(sqrt((u_all ** 2) + (v_all ** 2)), cmap='jet', animated=True)
+            # im = plt.quiver(x,y,u_all,v_all)
             ims.append([im])
         if plotstring == 'VorticityAnimation':
-            omega_all = asarray(omega_all).reshape(Nx, Ny)
-            im = plt.imshow(omega_all, cmap='jet', animated=True)
+            omega_all = asarray(Wz_all).reshape(Nx, Ny)
+            im = plt.imshow(abs(omega_all), cmap='jet', animated=True)
             ims.append([im])
 
 # --------------finish declaration of functions-------
@@ -211,98 +192,109 @@ x, y, kx, ky, k2, k2_exp = IC_coor(Nx, Ny, Np, dx, dy, rank, num_processes)
 
 # ----Initialize Variables-------(hat denotes variables in Fourier space,)
 # velocity
-u_hat = zeros((Nx, Np), dtype=complex);
-v_hat = zeros((Nx, Np), dtype=complex);
+Vxhat = zeros((Nx, Np), dtype=complex);
+Vyhat = zeros((Nx, Np), dtype=complex);
 # Vorticity
-omega_hat = zeros((Nx, Np), dtype=complex);
+Wzhat = zeros((Nx, Np), dtype=complex);
 # Nonlinear term
 NLxhat = zeros((Nx, Np), dtype=complex);
 NLyhat = zeros((Nx, Np), dtype=complex);
 # variables in physical space
-u = zeros((Np, Ny), dtype=float);
-v = zeros((Np, Ny), dtype=float);
-omega = zeros((Np, Ny), dtype=float);
+Vx = zeros((Np, Ny), dtype=float);
+Vy = zeros((Np, Ny), dtype=float);
+Wz = zeros((Np, Ny), dtype=float);
 
 # generate initial velocity field
-u_hat, v_hat = IC_condition(ic_type, k_ic, kx, ky, Nx, Np)
+Vxhat, Vyhat = IC_condition(ic_type, k_ic, kx, ky, Nx, Np)
 
 # ------Dealiasing------------------------------------------------
-u_hat, v_hat = delias(u_hat, v_hat, Nx, Np, k2)
+Vxhat, Vyhat = delias(Vxhat, Vyhat, Nx, Np, k2)
 #
 # ------Storing variables for later use in time integration--------
-u_hat_t0 = u_hat;
-v_hat_t0 = v_hat;
+Vxhat_t0 = Vxhat;
+Vyhat_t0 = Vyhat;
 #
-
+plotstring = 'VorticityAnimation'
 step = 1
 pbar = tqdm(total=int(Nstep))
 
+fig = plt.figure()
+ims = []
 # ----Main Loop-----------
-for n in range(Nstep + 1):
+for istep in range(Nstep + 1):
     if rank == 0:
         wt = MPI.Wtime()
     # ------Dealiasing
-    u_hat, v_hat = delias(u_hat, v_hat, Nx, Np, k2)
+    Vxhat, Vyhat = delias(Vxhat, Vyhat, Nx, Np, k2)
     # Calculate Vorticity
-    omega_hat = 1j * (kx * v_hat - ky * u_hat);
+    Wzhat = 1j * (kx * Vyhat - ky * Vxhat);
     # fields in x-space
-    u = ifftn_mpi(u_hat, u)
-    v = ifftn_mpi(v_hat, v)
-    omega = ifftn_mpi(omega_hat, omega)
+    Vx = ifftn_mpi(Vxhat, Vx)
+    Vy = ifftn_mpi(Vyhat, Vy)
+    Wz = ifftn_mpi(Wzhat, Wz)
 
     # Fields in Fourier Space
-    u_hat = fftn_mpi(u, u_hat)
-    v_hat = fftn_mpi(v, v_hat)
-    omega_hat = fftn_mpi(omega, omega_hat)
-
+    Vxhat = fftn_mpi(Vx, Vxhat)
+    Vyhat = fftn_mpi(Vy, Vyhat)
+    Wzhat = fftn_mpi(Wz, Wzhat)
 
     # Calculate non-linear term in x-space
-    NLx = v * omega;
-    NLy = -u * omega;
+    NLx = Vy * Wz;
+    NLy = -Vx * Wz;
 
     # move non-linear term back to Fourier k-space
     NLxhat = fftn_mpi(NLx, NLxhat)
     NLyhat = fftn_mpi(NLy, NLyhat)
 
     # ------Dealiasing------------------------------------------------
-    u_hat, v_hat = delias(u_hat, v_hat, Nx, Np, k2)
+    Vxhat, Vyhat = delias(Vxhat, Vyhat, Nx, Np, k2)
 
     # Integrate in time
     # ---Euler for 1/2-step-----------
-    if (n == 0):
-        u_hat = u_hat + dt_h * (
-                NLxhat - nu * (k2 ** 5) * u_hat - nu_hypo * (k2 ** (-0)) ** u_hat);
-        v_hat = v_hat + dt_h * (
-                NLyhat - nu * (k2 ** 5) * v_hat - nu_hypo * (k2 ** (-0)) ** v_hat);
+    if (istep == 0):
+        Vxhat = Vxhat + dt_h * (
+                    NLxhat - nu * (k2 ** 5) * Vxhat - nu_hypo * (k2 ** (-0)) ** Vxhat);
+        Vyhat = Vyhat + dt_h * (
+                    NLyhat - nu * (k2 ** 5) * Vyhat - nu_hypo * (k2 ** (-0)) ** Vyhat);
         oNLxhat = NLxhat;
         oNLyhat = NLyhat;
     # ---Midpoint time-integration----
-    elif (n == 1):
-        u_hat = u_hat_t0 + dt * (
-                NLxhat - nu * (k2 ** 5) * u_hat - nu_hypo * (k2 ** (-0)) * u_hat);
-        v_hat = v_hat_t0 + dt * (
-                NLyhat - nu * (k2 ** 5) * v_hat - nu_hypo * (k2 ** (-0)) * v_hat);
-
-    # ---Adam-Bashforth integration---
+    elif (istep == 1):
+        Vxhat = Vxhat_t0 + dt * (
+                    NLxhat - nu * (k2 ** 5) * Vxhat - nu_hypo * (k2 ** (-0)) * Vxhat);
+        Vyhat = Vyhat_t0 + dt * (
+                    NLyhat - nu * (k2 ** 5) * Vyhat - nu_hypo * (k2 ** (-0)) * Vyhat);
+        # ---Adam-Bashforth integration---
     else:
-        u_hat = u_hat + dt * (1.5 * NLxhat - 0.5 * oNLxhat * k2_exp);
-        v_hat = v_hat + dt * (1.5 * NLyhat - 0.5 * oNLyhat * k2_exp);
-        u_hat = u_hat * k2_exp;
-        v_hat = v_hat * k2_exp;
-        u_hat = u_hat;
-        v_hat = v_hat;
+        Vxhat = Vxhat + dt * (1.5 * NLxhat - 0.5 * oNLxhat * k2_exp);
+        Vyhat = Vyhat + dt * (1.5 * NLyhat - 0.5 * oNLyhat * k2_exp);
+        Vxhat = Vxhat * k2_exp;
+        Vyhat = Vyhat * k2_exp;
+        Vxhat = Vxhat;
+        Vyhat = Vyhat;
 
         oNLxhat = NLxhat;
         oNLyhat = NLyhat;
-    # output vorticity contour
-    if (n % diag_out_step == 0):
-        output(omega, x, y, Nx, Ny, rank, t, 'VelocityAnimation')
-        #if rank == 0:
-            #print('simulation time')
-            #print(MPI.Wtime() - wt)
-    t = t + dt;
     step += 1
     pbar.update(1)
-ani = animation.ArtistAnimation(fig, ims, interval=15, blit=True,
+    # output vorticity contour
+    if (istep % diag_out_step == 0):
+        output(Wz, x, y, Nx, Ny, rank, t,plotstring)
+        if rank == 0:
+            print
+            'simulation time'
+            print
+            MPI.Wtime() - wt
+
+    t = t + dt;
+
+if rank == 0:
+    if plotstring in ['VelocityAnimation', 'VorticityAnimation']:
+        ani = animation.ArtistAnimation(fig, ims, interval=15, blit=True,
                                         repeat_delay=None)
-ani.save('animationVelocity.gif', writer='imagemagick', fps=30)
+        ani.save('animationVelocity.gif', writer='imagemagick', fps=30)
+    if plotstring == 'store':
+        save('datafiles/u_vel', u_storage)
+        save('datafiles/v_vel', v_storage)
+        save('datafiles/omega', omega_storage)
+        save('datafiles/tlist', t_list)

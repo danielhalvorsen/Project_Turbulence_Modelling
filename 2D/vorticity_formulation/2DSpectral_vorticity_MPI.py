@@ -14,12 +14,12 @@ import matplotlib.animation as animation
 
 # parameters
 tend = 50
-dt = 1e-3
+dt = 1e-2
 Nstep = int(ceil(tend / dt))
-N = Nx = Ny = 256;  # grid size
+N = Nx = Ny = 64;  # grid size
 t = 0
 nu = 5e-4  # viscosity
-ICchoice = 'randomVel'
+ICchoice = 'omega2'
 aniNr = 0.02 * Nstep
 save_dt = 1e-4
 save_every = Nstep * save_dt
@@ -42,13 +42,13 @@ b = [0.5, 0.5, 1.]
 
 
 # inverse FFT
-def ifftn_mpi(fu, u):
+def ifftn_mpi_3(fu, u):
     u = real(ifft2(fu))
     return u
 
 
 # FFT
-def fftn_mpi(u, fu):
+def fftn_mpi_3(u, fu):
     fu = fft2(u)
     return fu
 
@@ -68,6 +68,24 @@ def fftn_mpi_2(u, fu):
     comm.Alltoall([U_mpi, MPI.DOUBLE_COMPLEX], [fu, MPI.DOUBLE_COMPLEX])
     fu[:] = fft2(fu)
     return fu
+
+def ifftn_mpi(fu, u):
+    Uc_hat[:] = ifftshift(ifft(fftshift(fu), axis=0))
+    comm.Alltoall([Uc_hat, MPI.DOUBLE_COMPLEX], [U_mpi, MPI.DOUBLE_COMPLEX])
+    Uc_hatT[:] = rollaxis(U_mpi, 1).reshape(Uc_hatT.shape)
+    u[:] = ifftshift(ifft(fftshift(Uc_hatT), axis=1))
+    return u
+
+
+# FFT
+def fftn_mpi(u, fu):
+    Uc_hatT[:] = fftshift(fft(ifftshift(u), axis=1))
+    U_mpi[:] = rollaxis(Uc_hatT.reshape(Np, num_processes, Np), 1)
+    comm.Alltoall([U_mpi, MPI.DOUBLE_COMPLEX], [fu, MPI.DOUBLE_COMPLEX])
+    fu[:] = fft(ifftshift(fu), axis=0)
+    return fu
+
+
 
 
 
@@ -121,17 +139,16 @@ def IC_condition(Nx, Np, u, v, u_hat, v_hat, ICchoice, omega, omega_hat, X, Y):
         plt.show()
         omega_hat = fftn_mpi(omega, omega_hat)
     if ICchoice == 'omega2':
+
         H = exp(-((X - pi + pi / 5)**2 + (Y - pi + pi / 5) ** 2) / 0.3) - exp(
             -((X - pi - pi / 5)**2 + (Y - pi + pi / 5) ** 2) /0.2) + exp(-((X - pi - pi / 5)**2 + (Y - pi - pi / 5)**2)/0.4);
         #epsilon = 0.1;
         #Noise = random.rand(Np, Ny)
-        omega = H#+epsilon*Noise
-       # if rank==0:
-        #    omega_all = comm.gather(omega,root=0)
-         #   omega_all = asarray(omega_all).reshape(Nx, Ny)
-          #  omega_all = omega_all.transpose()
-        omega_hat_test = fft2(omega)
-        omega_hat = fftn_mpi(omega, omega_hat)
+        omega = H
+        omega_hat = (fftn_mpi(omega,omega_hat))
+        omega = real(ifftn_mpi(omega_hat,omega))
+    plt.imshow(abs(omega))
+    plt.show()
     return omega_hat
 
 
@@ -184,7 +201,7 @@ def output(save_counter, omega, u, v, x, y, Nx, Ny, rank, time, plotstring):
             ims.append([im])
         if plotstring == 'VorticityAnimation':
             omega_all = asarray(omega_all).reshape(Nx, Ny)
-            im = plt.imshow((omega_all), cmap='jet', animated=True)
+            im = plt.imshow(abs(omega_all), cmap='jet', animated=True)
             ims.append([im])
         if plotstring == 'store':
             omega_all = asarray(omega_all).reshape(Nx, Ny)
@@ -243,27 +260,27 @@ dy = Ly / Ny;
 x, y, Kx, Ky, K2, K2_inv = IC_coor(Nx, Ny, Np, dx, dy, rank, num_processes)
 # TODO check what needs to be done with the wave numbers to get rid of IC_Coor function
 
-Xmesh = mgrid[rank * Np:(rank + 1) * Np, :N].astype(float) * Lx / N
-X = Xmesh[1]
-Y = Xmesh[0]
-
+sx = slice(rank*Np,(rank+1)*Np)
+Xmesh = mgrid[sx, :N].astype(float) * Lx / N
+X = Xmesh[0]
+Y = Xmesh[1]
 
 
 x = Y[0]
 y = Y[0]
 kx = fftfreq(N, 1. / N)
 ky = kx
-sx = slice(rank*Np,(rank+1)*Np)
+
 K = array(meshgrid(kx, ky[sx], indexing='ij'), dtype=int)
 Kx = K[1]
 Ky = K[0]
 K2 = sum(K * K, 0, dtype=int)
+
 LapHat = K2.copy()
 LapHat *= -1
 K2[0][0] = 1
 K2 *=-1
 K2_inv = 1 / where(K2 == 0, 1, K2).astype(float)
-
 ikx_over_K2 = 1j * Kx * K2_inv
 iky_over_K2 = 1j * Ky * K2_inv
 
@@ -296,6 +313,7 @@ omega_storage = empty((save_interval + 1, Nx, Nx), dtype=float)
 # generate initial velocity field
 omega_hat_t0 = IC_condition(Nx, Np, u, v, u_hat, v_hat, ICchoice, omega, omega_hat, X, Y)
 # omega_hat_t0 = 1j * (Kx * v_hat - Ky * u_hat)*dealias;
+omega = ifftn_mpi(omega_hat_t0,omega)
 
 
 step = 1
@@ -325,7 +343,7 @@ for n in range(Nstep + 1):
 
     #rhs_hat = visc_term_complex - u_hat * 1j * Kx * omega_hat * dealias - v_hat * 1j * \
      #         Ky * omega_hat * dealias
-    #rhs_hat = visc_term_complex - v_grad_omega_hat
+ #   rhs_hat = visc_term_complex - v_grad_omega_hat
   #  rhs = ifftn_mpi(rhs_hat, rhs)
 
     omega_hat_new = 1 / (1 / dt - 0.5 * nu * LapHat)*(
@@ -333,19 +351,19 @@ for n in range(Nstep + 1):
     omega_hat = omega_hat_new.copy()
 
    # omega = ifftn_mpi(omega_hat,omega)
-    '''
-    if n%50==0:
-        plt.imshow(omega,cmap='jet')
+
+    if n%200==0:
+        omega = ifftn_mpi(omega_hat,omega)
+        plt.imshow(abs(omega),cmap='jet')
         plt.show()
+
     '''
     omega_hat1 = omega_hat0 = omega_hat
     for rk in range(4):
         if rk < 3: omega_hat = omega_hat0 + b[rk] * dt * rhs_hat
         omega_hat1 += a[rk] * dt * rhs_hat
     omega_hat = omega_hat1
-
-#    omega = omega + dt * rhs
-#    omega_hat = fftn_mpi(omega, omega_hat)
+    '''
     if (n % aniNr == 0):
         omega = ifftn_mpi(omega_hat, omega)
         output(save_counter, omega, u, v, x, y, Nx, Ny, rank, t, plotstring)
