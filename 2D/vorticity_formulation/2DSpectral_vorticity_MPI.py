@@ -14,12 +14,12 @@ import matplotlib.animation as animation
 
 # parameters
 tend = 50
-dt = 1e-2
+dt = 1e-3
 Nstep = int(ceil(tend / dt))
-N = Nx = Ny = 64;  # grid size
+N = Nx = Ny = 256;  # grid size
 t = 0
 nu = 5e-4  # viscosity
-ICchoice = 'omega2'
+ICchoice = 'randomVel'
 aniNr = 0.02 * Nstep
 save_dt = 1e-4
 save_every = Nstep * save_dt
@@ -43,20 +43,32 @@ b = [0.5, 0.5, 1.]
 
 # inverse FFT
 def ifftn_mpi(fu, u):
-    Uc_hat[:] = ifft(fu)
-    comm.Alltoall([Uc_hat, MPI.DOUBLE_COMPLEX], [U_mpi, MPI.DOUBLE_COMPLEX])
-    Uc_hatT[:] = rollaxis(U_mpi, 1).reshape(Uc_hatT.shape)
-    u[:] = ifft(Uc_hatT)
+    u = real(ifft2(fu))
     return u
 
 
 # FFT
 def fftn_mpi(u, fu):
-    Uc_hatT[:] = fft(u)
+    fu = fft2(u)
+    return fu
+
+
+def ifftn_mpi_2(fu, u):
+    Uc_hat[:] = ifft2(fu)
+    comm.Alltoall([Uc_hat, MPI.DOUBLE_COMPLEX], [U_mpi, MPI.DOUBLE_COMPLEX])
+    Uc_hatT[:] = rollaxis(U_mpi, 1).reshape(Uc_hatT.shape)
+    u[:] = ifft2(Uc_hatT)
+    return u
+
+
+# FFT
+def fftn_mpi_2(u, fu):
+    Uc_hatT[:] = fft2(u)
     U_mpi[:] = rollaxis(Uc_hatT.reshape(Np, num_processes, Np), 1)
     comm.Alltoall([U_mpi, MPI.DOUBLE_COMPLEX], [fu, MPI.DOUBLE_COMPLEX])
-    fu[:] = fft(fu)
+    fu[:] = fft2(fu)
     return fu
+
 
 
 # ----Initialize Velocity in Fourier space-----------
@@ -118,6 +130,7 @@ def IC_condition(Nx, Np, u, v, u_hat, v_hat, ICchoice, omega, omega_hat, X, Y):
         #    omega_all = comm.gather(omega,root=0)
          #   omega_all = asarray(omega_all).reshape(Nx, Ny)
           #  omega_all = omega_all.transpose()
+        omega_hat_test = fft2(omega)
         omega_hat = fftn_mpi(omega, omega_hat)
     return omega_hat
 
@@ -234,6 +247,8 @@ Xmesh = mgrid[rank * Np:(rank + 1) * Np, :N].astype(float) * Lx / N
 X = Xmesh[1]
 Y = Xmesh[0]
 
+
+
 x = Y[0]
 y = Y[0]
 kx = fftfreq(N, 1. / N)
@@ -244,6 +259,7 @@ Kx = K[1]
 Ky = K[0]
 K2 = sum(K * K, 0, dtype=int)
 LapHat = K2.copy()
+LapHat *= -1
 K2[0][0] = 1
 K2 *=-1
 K2_inv = 1 / where(K2 == 0, 1, K2).astype(float)
@@ -304,19 +320,20 @@ for n in range(Nstep + 1):
     omega_kx = ifftn_mpi(1j*Kx * omega_hat, omega_kx)
     omega_ky = ifftn_mpi(1j*Ky * omega_hat, omega_ky)
     v_grad_omega = (u * omega_kx + v * omega_ky)
-    v_grad_omega_hat = fftn_mpi(v_grad_omega, v_grad_omega_hat)
+    v_grad_omega_hat = fftn_mpi(v_grad_omega, v_grad_omega_hat)*dealias
     visc_term_complex = -nu * K2 * omega_hat
 
-    # rhs_hat = visc_term_complex - u_hat * 1j * Kx * omega_hat * dealias - v_hat * 1j * \
-    #          Ky * omega_hat * dealias
- #   rhs_hat = visc_term_complex - v_grad_omega_hat
+    #rhs_hat = visc_term_complex - u_hat * 1j * Kx * omega_hat * dealias - v_hat * 1j * \
+     #         Ky * omega_hat * dealias
+    #rhs_hat = visc_term_complex - v_grad_omega_hat
   #  rhs = ifftn_mpi(rhs_hat, rhs)
 
-    omega_hat_new = 1 / (1 / dt - 0.5 * nu * K2)*(
-                (1 / dt + 0.5 * nu * K2)* omega_hat - v_grad_omega_hat);
+    omega_hat_new = 1 / (1 / dt - 0.5 * nu * LapHat)*(
+                (1 / dt + 0.5 * nu * LapHat)* omega_hat - v_grad_omega_hat);
     omega_hat = omega_hat_new.copy()
 
-    omega = ifftn_mpi(omega_hat,omega)
+   # omega = ifftn_mpi(omega_hat,omega)
+    '''
     if n%50==0:
         plt.imshow(omega,cmap='jet')
         plt.show()
@@ -326,7 +343,7 @@ for n in range(Nstep + 1):
         if rk < 3: omega_hat = omega_hat0 + b[rk] * dt * rhs_hat
         omega_hat1 += a[rk] * dt * rhs_hat
     omega_hat = omega_hat1
-    '''
+
 #    omega = omega + dt * rhs
 #    omega_hat = fftn_mpi(omega, omega_hat)
     if (n % aniNr == 0):
