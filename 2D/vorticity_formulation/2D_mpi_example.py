@@ -20,12 +20,12 @@ sys.path.append(parent)
 
 # parameters
 new = 1;
-Nstep = 2500;  # no. of steps
+Nstep = 1000;  # no. of steps
 N = Nx = Ny = 64;  # grid size
 t = 0;
 nu = 5e-10;  # viscosity
 nu_hypo = 2e-3;  # hypo-viscosity
-dt = 5e-3;  # time-step
+dt = 5e-7;  # time-step
 dt_h = dt / 2;  # half-time step
 ic_type = 2  # 1 for Taylor-Green init_cond; 2 for random init_cond
 k_ic = 1;  # initial wavenumber for Taylor green forcing
@@ -207,6 +207,9 @@ Wz = zeros((Np, Ny), dtype=float);
 # generate initial velocity field
 Vxhat, Vyhat = IC_condition(ic_type, k_ic, kx, ky, Nx, Np)
 
+
+plt.imshow(k2)
+plt.show()
 # ------Dealiasing------------------------------------------------
 Vxhat, Vyhat = delias(Vxhat, Vyhat, Nx, Np, k2)
 #
