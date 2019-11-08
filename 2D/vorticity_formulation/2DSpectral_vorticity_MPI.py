@@ -13,13 +13,13 @@ import matplotlib.animation as animation
 # sys.path.append(parent)
 
 # parameters
-tend = 50
+tend = 100
 dt = 1e-2
 Nstep = int(ceil(tend / dt))
-N = Nx = Ny = 128;  # grid size
+N = Nx = Ny = 64;  # grid size
 t = 0
 nu = 5e-4  # viscosity
-ICchoice = 'randomVel'
+ICchoice = 'omegahat1'
 aniNr = 0.02 * Nstep
 save_dt = 1e-4
 save_every = Nstep * save_dt
@@ -41,17 +41,6 @@ a = [1. / 6., 1. / 3., 1. / 3., 1. / 6.]
 b = [0.5, 0.5, 1.]
 
 
-# inverse FFT
-def ifftn_mpi_3(fu, u):
-    u = real(ifft2(fu))
-    return u
-
-
-# FFT
-def fftn_mpi_3(u, fu):
-    fu = fft2(u)
-    return fu
-
 
 def ifftn_mpi(fu, u):
     Uc_hat[:] = ifftshift(ifft(fftshift(fu), axis=0))
@@ -69,21 +58,6 @@ def fftn_mpi(u, fu):
     fu[:] = fftshift(fft(ifftshift(fu), axis=0))
     return fu
 
-def ifftn_mpi_2(fu, u):
-    Uc_hat[:] = ifftshift(ifft(fftshift(fu), axis=0))
-    comm.Alltoall([Uc_hat, MPI.DOUBLE_COMPLEX], [U_mpi, MPI.DOUBLE_COMPLEX])
-    Uc_hatT[:] = rollaxis(U_mpi, 1).reshape(Uc_hatT.shape)
-    u[:] = ifftshift(ifft(fftshift(Uc_hatT), axis=1))
-    return u
-
-
-# FFT
-def fftn_mpi_2(u, fu):
-    Uc_hatT[:] = fftshift(fft(ifftshift(u), axis=1))
-    U_mpi[:] = rollaxis(Uc_hatT.reshape(Np, num_processes, Np), 1)
-    comm.Alltoall([U_mpi, MPI.DOUBLE_COMPLEX], [fu, MPI.DOUBLE_COMPLEX])
-    fu[:] = fft(ifftshift(fu), axis=0)
-    return fu
 
 
 
@@ -369,9 +343,9 @@ for n in range(Nstep + 1):
     pbar.update(1)
 if rank == 0:
     if plotstring in ['VelocityAnimation', 'VorticityAnimation']:
-        ani = animation.ArtistAnimation(fig, ims, interval=15, blit=True,
+        ani = animation.ArtistAnimation(fig, ims, interval=4, blit=True,
                                         repeat_delay=None)
-        ani.save('animationVelocity.gif', writer='imagemagick', fps=30)
+        ani.save('animationVelocity.gif', writer='imagemagick')
     if plotstring == 'store':
         save('datafiles/u_vel', u_storage)
         save('datafiles/v_vel', v_storage)
