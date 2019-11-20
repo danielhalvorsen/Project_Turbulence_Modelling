@@ -13,14 +13,14 @@ import matplotlib.animation as animation
 # sys.path.append(parent)
 
 # parameters
-tend = 100
+tend = 200
 dt = 1e-2
 Nstep = int(ceil(tend / dt))
 N = Nx = Ny = 64;  # grid size
 t = 0
 nu = 5e-4  # viscosity
-ICchoice = 'omegahat1'
-aniNr = 0.02 * Nstep
+ICchoice = 'randomVel'
+aniNr = 0.005 * Nstep
 save_dt = 1e-4
 save_every = Nstep * save_dt
 save_interval = int(ceil(Nstep / save_every))
@@ -287,7 +287,7 @@ omega = ifftn_mpi(omega_hat_t0,omega)
 step = 1
 pbar = tqdm(total=int(Nstep))
 save_counter = 0
-plotstring = ('VorticityAnimation')
+plotstring = ('VelocityAnimation')
 fig = plt.figure()
 ims = []
 
@@ -343,7 +343,7 @@ for n in range(Nstep + 1):
     pbar.update(1)
 if rank == 0:
     if plotstring in ['VelocityAnimation', 'VorticityAnimation']:
-        ani = animation.ArtistAnimation(fig, ims, interval=4, blit=True,
+        ani = animation.ArtistAnimation(fig, ims, interval=2, blit=True,
                                         repeat_delay=None)
         ani.save('animationVelocity.gif', writer='imagemagick')
     if plotstring == 'store':
