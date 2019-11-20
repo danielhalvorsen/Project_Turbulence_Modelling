@@ -22,7 +22,7 @@ Two dimensional Navier Stokes, magnitude of velocity
 
 
 <p align="center">
-  <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/2animationVelocitynu5e-4N64dt1e-2tend200.gif">
+  <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/animationVelocitynu5e-4N64dt1e-2tend200.gif">
 </p>
 Two dimensional Navier Stokes, magnitude of velocity
 
