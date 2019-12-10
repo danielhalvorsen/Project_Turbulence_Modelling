@@ -1,135 +1,222 @@
 import numpy as np
-import matplotlib.pyplot as plt
+import time
+from mpi4py import MPI
+from tqdm import tqdm
+import matplotlib
 
-###########
-# Read in velocity field files
-dt_list = np.load('/home/danieloh/PycharmProjects/Project_Turbulence_Modelling/2D'
-                  '/vorticity_formulation/datafiles/tlist.npy')
-u_vel = np.load('/home/danieloh/PycharmProjects/Project_Turbulence_Modelling/2D'
-                '/vorticity_formulation/datafiles/u_vel.npy')
-v_vel = np.load('/home/danieloh/PycharmProjects/Project_Turbulence_Modelling/2D'
-                '/vorticity_formulation/datafiles/v_vel.npy')
-vorticity = np.load(
-    '/home/danieloh/PycharmProjects/Project_Turbulence_Modelling/2D'
-    '/vorticity_formulation/datafiles/omega.npy')
-print('-----------Loaded in text files-----')
-print('Vorticity shape: ', np.shape(vorticity))
-L = np.pi
-N = int((np.shape(u_vel[0, :]))[0])
-dx = 2 * L / N
-dy = dx
-x = np.linspace(1 - N / 2, N / 2, N) * dx
-y = np.linspace(1 - N / 2, N / 2, N) * dx
+#matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from scipy.stats import multivariate_normal
+
+# Set the colormap
+plt.rcParams['image.cmap'] = 'BrBG'
+
+# Basic parameters
+N= 512
+dt = 0.0001
+tend = 150
+
+
+D = 0.0008# Diffusion constant
+L = 2*np.pi # 2pi = one period
+dx = L/N
+dy = dx # equidistant
+dx2 = dx ** 2
+dy2 = dy ** 2
+r = dt * D / (dx ** 2)
+assert (0 < 2 * r <= 0.5),('N too high. Reduce time step to uphold stability')
+timesteps = int(np.ceil(tend/dt))
+image_interval = timesteps*0.5  # Write frequency for png files
+
+x = np.arange(0, N, 1) * L / N
+y = np.arange(0, N, 1) * L / N
 [X, Y] = np.meshgrid(x, y)
 
-time_levels = int(len(dt_list))
-dt = dt_list[1] - dt_list[0]
-t_end = dt_list[-1]
 
-S = np.zeros([N, N])
-S_new = S.copy()
-res = S.copy()
-# S[int(N / 2) - int(N / 10):int(N / 2) + int(N / 10),
-# int(N / 2) - int(N / 10):int(N / 2) + int(N / 10)] = 1
-S = np.exp(-4 * np.log(2) * ((X) ** 2 + (Y) ** 2) / 3 ** 2)
-init_mass = np.sum(np.sum(S))
 fig, axs = plt.subplots(2)
 fig.suptitle('Title here')
-# ax = plt.axes(xlim=(0,N),ylim=(0,N))
-# domain, = ax.plot(S)
 
-counter = 0
-scheme = 'First_Upwind'
-if scheme == 'Second_Upwind':
-    for t in range(time_levels):
-        # Temporal loop
-        for i in range(N):
-            # Spatial loop, x-direction
-            for j in range(N):
-                # Spatial loop, y-direction
-                # TODO incorporate these variables into a function
-                u_plus = np.max(u_vel[t, i, j], 0)
-                u_min = np.min(u_vel[t, i, j], 0)
-                v_plus = np.max(v_vel[t, i, j], 0)
-                v_min = np.min(v_vel[t, i, j], 0)
-                Sx_plus = (-S[(i + 2) % N, j] + 4 * S[(i + 1) % N, j] - 3 * S[i, j]) / (
-                        2 * dx)
-                Sx_min = (3 * S[i, j] - 4 * S[i - 1, j] + S[i - 2, j]) / (2 * dx)
-                Sy_plus = (-S[i, (j + 2) % N] + 4 * S[i, (j + 1) % N] - 3 * S[i, j]) / (
-                        2 * dy)
-                Sy_min = (3 * S[i, j] - 4 * S[i, j - 1] + S[i, j - 2]) / (2 * dy)
 
-                res[i, j] = -(u_plus * Sx_min + u_min * Sx_plus) - (
-                        v_plus * Sy_min + v_min * Sy_plus)
-        S_new = S + dt * res
-        #   domain.set_data(S)
-        S = S_new.copy()
-        max_u = np.max(np.abs(u_vel))
-        max_v = np.max(np.abs(v_vel))
-        max_vel = np.max([max_u, max_v])
-        cfl = np.abs(max_vel * dt / dx)
-        mass = np.sum(np.sum(S))
-        print('Mass fraction: ', mass / init_mass)
-        print('Max CFL value: ', cfl, '    Time level:  ', dt_list[t])
-        # TODO VALUES OF SEDIEMTN OSCILLATES BETWEEN POSITIVE ANG NEGATIVE, WHY??
-        if counter % 10 == 0:
-            plt.suptitle(
-                'Max CFL value: ' + np.str(cfl) + '   Time level:  ' + str(dt_list[t]))
-            axs[0].imshow(S.T, cmap='jet', vmin=0, vmax=1)
-            axs[1].imshow(np.abs((u_vel[t] ** 2) + (v_vel[t] ** 2)), cmap='jet')
-            axs[1].quiver(u_vel[t], v_vel[t])
-            plt.pause(0.005)
-        counter += 1
-    plt.show()
+# For stability, this is the largest interval possible
+# for the size of the time-step:
+# dt = dx2*dy2 / ( 2*D*(dx2+dy2) )
 
-if scheme == 'First_Upwind':
-    for t in range(time_levels):
-        # Temporal loop
-        for i in range(N):
-            # Spatial loop, x-direction
-            for j in range(N):
-                # Spatial loop, y-direction
-                # TODO incorporate these variables into a function
-                u_plus = np.max(u_vel[t, i, j], 0)
-                u_min = np.min(u_vel[t, i, j], 0)
-                v_plus = np.max(v_vel[t, i, j], 0)
-                v_min = np.min(v_vel[t, i, j], 0)
-                Sx_plus = (S[(i + 1) % N, j] - S[i, j]) / dx
-                Sx_min = (S[i, j] - S[i - 1, j]) / dx
-                Sy_plus = (S[i, (j + 1) % N] - S[i, j]) / dy
-                Sy_min = (S[i, j] - S[i, j - 1]) / dy
 
-                res[i, j] = -(u_plus * Sx_min + u_min * Sx_plus) - (
-                        v_plus * Sy_min + v_min * Sy_plus)
-        S_new = S + dt * res
-        #   domain.set_data(S)
-        S = S_new.copy()
-        max_u = np.max(np.abs(u_vel))
-        max_v = np.max(np.abs(v_vel))
-        max_vel = np.max([max_u, max_v])
-        cfl = np.abs(max_vel * dt / dx)
-        mass = np.sum(np.sum(S))
-        print('Mass fraction: ', mass / init_mass)
-        print('Max CFL value: ', cfl, '    Time level:  ', dt_list[t])
-        # TODO VALUES OF SEDIEMTN OSCILLATES BETWEEN POSITIVE ANG NEGATIVE, WHY??
-        if counter % 10 == 0:
-            plt.suptitle(
-                'Max CFL value: ' + np.str(cfl) + '   Time level:  ' + str(
-                    dt_list[t]))
-            axs[0].imshow(S.T, cmap='jet', vmin=0, vmax=1)
-            axs[1].imshow(np.abs((u_vel[t] ** 2) + (v_vel[t] ** 2)), cmap='jet')
-            axs[1].quiver(u_vel[t], v_vel[t])
-            plt.pause(0.005)
-        counter += 1
-    plt.show()
+# MPI globals
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+size = comm.Get_size()
 
-'''     M = np.hypot(u_vel[t], v_vel[t])
-        Q = axs[1].quiver(X, Y, u_vel[t], v_vel[t], M, units='x', 
-        pivot='tip',
-                          width=0.022,
-                       scale=1 / 0.15)
-        qk = axs[1].quiverkey(Q, 0.9, 0.9, 1, r'$1 \frac{m}{s}$', 
-        labelpos='E',
-                           coordinates='figure')
-        axs[1].scatter(X, Y, color='0.5', s=1)
-'''
+# Up/down neighbouring MPI ranks
+up = rank - 1
+if up < 0:
+    up = size-1
+down = rank + 1
+if down > size - 1:
+    down = 0
+
+
+def evolve(sol_new, sol,u,v, D, dt, dx2, dy2):
+    """Explicit time evolution.
+       u:            new temperature field
+       u_previous:   previous field
+       a:            diffusion constant
+       dt:           time step
+       dx2:          grid spacing squared, i.e. dx^2
+       dy2:            -- "" --          , i.e. dy^2"""
+    # LEFT boundary
+
+    sol_new[1:-1, 0] = sol[1:-1, 0] \
+                          + (dt*u[1:-1,0]) / (2*dx) * (sol[:-2, 0] - sol[2:, 0]) \
+                          + (dt*v[1:-1,0]) / (2*dx) * (sol[1:-1, -1] - sol[1:-1, 1]) \
+                          + r * (sol[2:, 0] - 2 * sol[1:-1, 0] + sol[:-2, 0]) \
+                          + r * (sol[1:-1, 1] - 2 * sol[1:-1, 0] + sol[1:-1, -1])
+    #INNER points
+    sol_new[1:-1, 1:-1] = sol[1:-1, 1:-1] \
+                          + (dt*u[1:-1,1:-1]) / (2*dx) * (sol[:-2,1:-1] - sol[2:,1:-1]) \
+                          + (dt*u[1:-1,1:-1]) / (2*dx) * (sol[1:-1,:-2] - sol[1:-1,2:]) \
+                          + r * (sol[2:, 1:-1] - 2 * sol[1:-1, 1:-1] + sol[:-2, 1:-1]) \
+                          + r * (sol[1:-1, 2:] - 2 * sol[1:-1, 1:-1] + sol[1:-1, :-2])
+    #RIGHT boundary
+    sol_new[1:-1, -1] = sol[1:-1, -1] \
+                          + (dt*u[1:-1,-1]) / (2*dx) * (sol[:-2, -1] - sol[2:, -1]) \
+                          + (dt*u[1:-1,-1]) / (2*dx) * (sol[1:-1, -2] - sol[1:-1, 0]) \
+                          + r * (sol[2:, -1] - 2 * sol[1:-1, -1] + sol[:-2, -1]) \
+                          + r * (sol[1:-1, 0] - 2 * sol[1:-1, -1] + sol[1:-1, -2])
+
+    #Update next time step
+    sol[:] = sol_new[:]
+    sol = sol/(np.sum(sol)) #cheat with mass conservation. Assume uniform loss over each cell
+
+def init_fields(X,Y):
+    # Read the initial temperature field from file
+    #field = np.loadtxt(filename)
+    #field0 = field.copy()  # Array for field of previous time step
+    pos = np.dstack((X, Y))
+    mu = np.array([2, 3])
+    cov = np.array([[.05, .010], [.010, .05]])
+    rv = multivariate_normal(mu, cov)
+    S = rv.pdf(pos)
+    field = S.copy() / (np.sum(S))
+    field0 = field.copy()
+
+
+    #A = 0.1
+    #omega = 1
+    #epsilon = 0.25
+    #u = -np.pi*A*np.sin(np.pi*(1)*X)*np.cos(np.pi*Y)
+    #v = -np.pi*A*np.cos(np.pi*(1)*X)*np.sin(np.pi*Y)*(1-2*epsilon)
+
+    #u = np.sin(1*X) * np.cos(1*Y)
+    #v = np.cos(1*X) * np.cos(1*Y)
+   # u = np.random.rand(N, N)*1
+   # v = np.random.rand(N, N)*1
+    u = np.ones((N,N))*1
+    v = np.ones((N,N))*1
+    cu = dt * np.max(u) / dx
+    cv = dt * np.max(v) / dx
+    assert (((cu ** 2) / r) + ((cv ** 2) / r) <= 2), ('dt might be too high or diffusion constant might be too low')
+
+    return field, field0, u,v
+
+
+def write_field(field, step):
+    plt.gca().clear()
+    plt.imshow(field,cmap='jet')
+    plt.axis('off')
+    plt.savefig('heat_{0:03d}.png'.format(step))
+
+
+def exchange(field):
+    # send down, receive from up
+    sbuf = field[-2, :]
+    rbuf = field[0, :]
+    comm.Sendrecv(sbuf, dest=down, recvbuf=rbuf, source=up)
+    # send up, receive from down
+    sbuf = field[1, :]
+    rbuf = field[-1, :]
+    comm.Sendrecv(sbuf, dest=up, recvbuf=rbuf, source=down)
+
+
+def iterate(field,u,v, local_field, local_field0,local_u,local_v, timesteps, image_interval):
+    step = 1
+    pbar = tqdm(total=int(timesteps))
+    for m in range(1, timesteps + 1):
+        exchange(local_field0)
+        evolve(local_field, local_field0,local_u,local_v ,D, dt, dx2, dy2)
+        step += 1
+        pbar.update(1)
+        if m % image_interval == 0:
+            comm.Gather(local_field[1:-1, :], field, root=0)
+            comm.Gather(local_u[1:-1, :], u, root=0)
+            comm.Gather(local_v[1:-1, :], v, root=0)
+            if rank == 0:
+                #write_field(field, m)
+                #plt.imshow(field.T,cmap='jet')
+                axs[0].imshow(field.T, cmap='jet')  # ,vmax=1,vmin=0)
+                axs[1].imshow((u.T), cmap='jet')
+                plt.pause(0.05)
+
+
+
+def main():
+    # Read and scatter the initial temperature field
+    if rank == 0:
+        field, field0,u,v = init_fields(X,Y)
+        shape = field.shape
+        dtype = field.dtype
+        comm.bcast(shape, 0)  # broadcast dimensions
+        comm.bcast(dtype, 0)  # broadcast data type
+    else:
+        field = None
+        u = None
+        v = None
+        shape = comm.bcast(None, 0)
+        dtype = comm.bcast(None, 0)
+    if shape[0] % size:
+        raise ValueError('Number of rows in the field (' \
+                         + str(shape[0]) + ') needs to be divisible by the number ' \
+                         + 'of MPI tasks (' + str(size) + ').')
+    n = int(shape[0] / size)  # number of rows for each MPI task
+    m = shape[1]  # number of columns in the field
+    buff = np.zeros((n, m), dtype)
+    comm.Scatter(field, buff, 0)  # scatter the data
+    local_field = np.zeros((n + 2, m), dtype)  # need two ghost rows!
+    local_field[1:-1, :] = buff  # copy data to non-ghost rows
+    local_field0 = np.zeros_like(local_field)  # array for previous time step
+
+    comm.Scatter(u, buff, 0)  # scatter the data
+    local_u = np.zeros((n + 2, m), dtype)  # need two ghost rows!
+    local_u[1:-1, :] = buff  # copy data to non-ghost rows
+
+    comm.Scatter(v, buff, 0)  # scatter the data
+    local_v = np.zeros((n + 2, m), dtype)  # need two ghost rows!
+    local_v[1:-1, :] = buff  # copy data to non-ghost rows
+
+
+    # Fix outer boundary ghost layers to account for aperiodicity?
+    '''
+    if True:
+        if rank == 0:
+            local_field[0, :] =local_field[1, :]
+        if rank == size - 1:
+            local_field[-1, :] = local_field[-2, :]
+    '''
+    local_field0[:] = local_field[:]
+
+    # Plot/save initial field
+    #if rank == 0:
+        #write_field(field, 0)
+    # Iterate
+    t0 = time.time()
+    iterate(field,u,v, local_field, local_field0,local_u,local_v, timesteps, image_interval)
+    t1 = time.time()
+    # Plot/save final field
+    comm.Gather(local_field[1:-1, :], field, root=0)
+    if rank == 0:
+        write_field(field, timesteps)
+        print("Running time: {0}".format(t1 - t0))
+
+
+if __name__ == '__main__':
+    main()

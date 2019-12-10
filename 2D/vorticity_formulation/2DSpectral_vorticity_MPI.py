@@ -16,10 +16,10 @@ import matplotlib.animation as animation
 tend = 200
 dt = 1e-2
 Nstep = int(ceil(tend / dt))
-N = Nx = Ny = 64;  # grid size
+N = Nx = Ny = 256;  # grid size
 t = 0
-nu = 5e-4  # viscosity
-ICchoice = 'randomVel'
+nu = 5e-4 # viscosity
+ICchoice = 'omega2'
 aniNr = 0.005 * Nstep
 save_dt = 1e-4
 save_every = Nstep * save_dt
@@ -106,7 +106,7 @@ def IC_condition(Nx, Np, u, v, u_hat, v_hat, ICchoice, omega, omega_hat, X, Y):
         omega = omega / npmax(omega)
         omega_hat = fftn_mpi(omega, omega_hat)
     if ICchoice == 'omega1':
-        omega = sin(10 * X) * sin(4 * X) * cos(10 * Y) * cos(3 * Y)
+        omega = sin(X)*cos(Y)
         omega_hat = fftn_mpi(omega, omega_hat)
     if ICchoice == 'omega2':
 
@@ -167,10 +167,12 @@ def output(save_counter, omega, u, v, x, y, Nx, Ny, rank, time, plotstring):
             im = plt.imshow(sqrt((u_all ** 2) + (v_all ** 2)), cmap='jet', animated=True)
             # im = plt.quiver(x,y,u_all,v_all)
             ims.append([im])
+          #  plt.show()
         if plotstring == 'VorticityAnimation':
             omega_all = asarray(omega_all).reshape(Nx, Ny)
             im = plt.imshow(abs(omega_all), cmap='jet', animated=True)
             ims.append([im])
+           # plt.show()
         if plotstring == 'store':
             omega_all = asarray(omega_all).reshape(Nx, Ny)
             u_all = asarray(u_all).reshape(Nx, Ny)
@@ -287,7 +289,7 @@ omega = ifftn_mpi(omega_hat_t0,omega)
 step = 1
 pbar = tqdm(total=int(Nstep))
 save_counter = 0
-plotstring = ('VelocityAnimation')
+plotstring = ('VorticityAnimation')
 fig = plt.figure()
 ims = []
 
@@ -320,9 +322,10 @@ for n in range(Nstep + 1):
 
    # omega = ifftn_mpi(omega_hat,omega)
     '''
-    if n%500==0:
+    if n%100==0:
         omega = ifftn_mpi(omega_hat,omega)
         plt.imshow(abs(omega),cmap='jet')
+        #plt.imshow(sqrt((u ** 2) + (v ** 2)), cmap='jet', animated=True)
         plt.show()
     '''
     '''
