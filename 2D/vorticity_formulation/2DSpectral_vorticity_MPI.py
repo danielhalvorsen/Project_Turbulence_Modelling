@@ -13,17 +13,17 @@ import matplotlib.animation as animation
 # sys.path.append(parent)
 
 # parameters
-tend = 200
+tend = 10
 dt = 1e-2
 Nstep = int(ceil(tend / dt))
-N = Nx = Ny = 256;  # grid size
+N = Nx = Ny = 64;  # grid size
 t = 0
-nu = 5e-4 # viscosity
-ICchoice = 'omega2'
-aniNr = 0.005 * Nstep
-save_dt = 1e-4
-save_every = Nstep * save_dt
-save_interval = int(ceil(Nstep / save_every))
+nu = 5e-3 # viscosity
+ICchoice = 'omegahat1'
+aniNr = 0.05 * Nstep
+save_dt = dt
+save_every = 0.1*Nstep
+save_interval = int(ceil(0.1*Nstep))
 t_list = linspace(0, tend, 1 / save_dt + 1)
 
 # ------------MPI setup---------
@@ -101,6 +101,7 @@ def IC_condition(Nx, Np, u, v, u_hat, v_hat, ICchoice, omega, omega_hat, X, Y):
             omega_hat[1, 1] = random.uniform() + 1j * random.uniform()
             omega_hat[3, 0] = random.uniform() + 1j * random.uniform()
             omega_hat[2, 3] = random.uniform() + 1j * random.uniform()
+            omega_hat[5, 3] = random.uniform() + 1j * random.uniform()
 
         omega = abs(ifftn_mpi(omega_hat, omega))
         omega = omega / npmax(omega)
@@ -177,11 +178,28 @@ def output(save_counter, omega, u, v, x, y, Nx, Ny, rank, time, plotstring):
             omega_all = asarray(omega_all).reshape(Nx, Ny)
             u_all = asarray(u_all).reshape(Nx, Ny)
             v_all = asarray(v_all).reshape(Nx, Ny)
+            #if (save_counter % save_interval):
 
-            u_storage[save_counter] = u_all
-            v_storage[save_counter] = v_all
-            omega_storage[save_counter] = omega_all
+            if (t==0):
+                u_storage_init = u_all
+                v_storage_init = v_all
+                omega_storage_init = omega_all
+                save('datafiles/u/u_vel_t_' + str(round(time)), u_storage_init)
+                save('datafiles/v/v_vel_t_' + str(round(time)), v_storage_init)
+                save('datafiles/omega/omega_t_' + str(round(time)), omega_storage_init)
+                #save('datafiles/time/tlist_t_' + str(round(time)), t_list)
 
+            if(t!=0):
+                u_storage[save_counter%save_interval] = u_all
+                v_storage[save_counter%save_interval] = v_all
+                omega_storage[save_counter%save_interval] = omega_all
+
+
+            if (save_counter%save_interval==(save_interval-1) and t!= 0 ):
+                save('datafiles/u/u_vel_t_'+str(round(time)), u_storage)
+                save('datafiles/v/v_vel_t_'+str(round(time)), v_storage)
+                save('datafiles/omega/omega_t_'+str(round(time)), omega_storage)
+                #save('datafiles/time/tlist_t_'+str(round(time)), t_list)
 
 # initialize x,y kx, ky coordinate
 def IC_coor(Nx, Ny, Np, dx, dy, rank, num_processes):
@@ -277,9 +295,12 @@ rhs = zeros((Np, Nx), dtype=float);
 visc_term_complex = zeros((Ny, Np), dtype=complex)
 visc_term_real = zeros((Np, Ny), dtype=float)
 v_grad_omega_hat = zeros((Ny, Np), dtype=complex)
-u_storage = empty((save_interval + 1, Nx, Nx), dtype=float)
-v_storage = empty((save_interval + 1, Nx, Nx), dtype=float)
-omega_storage = empty((save_interval + 1, Nx, Nx), dtype=float)
+u_storage = empty((save_interval, Nx, Nx), dtype=float)
+v_storage = empty((save_interval, Nx, Nx), dtype=float)
+omega_storage = empty((save_interval, Nx, Nx), dtype=float)
+u_storage_init = empty((1, Nx, Nx), dtype=float)
+v_storage_init = empty((1, Nx, Nx), dtype=float)
+omega_storage_init = empty((1, Nx, Nx), dtype=float)
 
 # generate initial velocity field
 omega_hat_t0 = IC_condition(Nx, Np, u, v, u_hat, v_hat, ICchoice, omega, omega_hat, X, Y)
@@ -289,7 +310,7 @@ omega = ifftn_mpi(omega_hat_t0,omega)
 step = 1
 pbar = tqdm(total=int(Nstep))
 save_counter = 0
-plotstring = ('VorticityAnimation')
+plotstring = ('store')
 fig = plt.figure()
 ims = []
 
@@ -336,10 +357,14 @@ for n in range(Nstep + 1):
     omega_hat = omega_hat1
     '''
 
-    if (n % aniNr == 0):
+
+    if(t!=0):
         omega = ifftn_mpi(omega_hat, omega)
         output(save_counter, omega, u, v, x, y, Nx, Ny, rank, t, plotstring)
         save_counter += 1
+    if (t==0):
+        omega = ifftn_mpi(omega_hat, omega)
+        output(save_counter, omega, u, v, x, y, Nx, Ny, rank, t, plotstring)
 
     t = t + dt;
     step += 1
@@ -349,8 +374,10 @@ if rank == 0:
         ani = animation.ArtistAnimation(fig, ims, interval=2, blit=True,
                                         repeat_delay=None)
         ani.save('animationVelocity.gif', writer='imagemagick')
+    '''
     if plotstring == 'store':
         save('datafiles/u_vel', u_storage)
         save('datafiles/v_vel', v_storage)
         save('datafiles/omega', omega_storage)
         save('datafiles/tlist', t_list)
+    '''
