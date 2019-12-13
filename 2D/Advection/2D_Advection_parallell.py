@@ -12,12 +12,12 @@ from scipy.stats import multivariate_normal
 plt.rcParams['image.cmap'] = 'BrBG'
 
 # Basic parameters
-N= 512
-dt = 0.0001
-tend = 150
+N= 128
+dt = 0.01
+tend = 10
 
 
-D = 0.0008# Diffusion constant
+D = 0.008# Diffusion constant
 L = 2*np.pi # 2pi = one period
 dx = L/N
 dy = dx # equidistant
@@ -26,7 +26,7 @@ dy2 = dy ** 2
 r = dt * D / (dx ** 2)
 assert (0 < 2 * r <= 0.5),('N too high. Reduce time step to uphold stability')
 timesteps = int(np.ceil(tend/dt))
-image_interval = timesteps*0.5  # Write frequency for png files
+image_interval = timesteps*0.01  # Write frequency for png files
 
 x = np.arange(0, N, 1) * L / N
 y = np.arange(0, N, 1) * L / N
@@ -74,19 +74,19 @@ def evolve(sol_new, sol,u,v, D, dt, dx2, dy2):
     #INNER points
     sol_new[1:-1, 1:-1] = sol[1:-1, 1:-1] \
                           + (dt*u[1:-1,1:-1]) / (2*dx) * (sol[:-2,1:-1] - sol[2:,1:-1]) \
-                          + (dt*u[1:-1,1:-1]) / (2*dx) * (sol[1:-1,:-2] - sol[1:-1,2:]) \
+                          + (dt*v[1:-1,1:-1]) / (2*dx) * (sol[1:-1,:-2] - sol[1:-1,2:]) \
                           + r * (sol[2:, 1:-1] - 2 * sol[1:-1, 1:-1] + sol[:-2, 1:-1]) \
                           + r * (sol[1:-1, 2:] - 2 * sol[1:-1, 1:-1] + sol[1:-1, :-2])
     #RIGHT boundary
     sol_new[1:-1, -1] = sol[1:-1, -1] \
                           + (dt*u[1:-1,-1]) / (2*dx) * (sol[:-2, -1] - sol[2:, -1]) \
-                          + (dt*u[1:-1,-1]) / (2*dx) * (sol[1:-1, -2] - sol[1:-1, 0]) \
+                          + (dt*v[1:-1,-1]) / (2*dx) * (sol[1:-1, -2] - sol[1:-1, 0]) \
                           + r * (sol[2:, -1] - 2 * sol[1:-1, -1] + sol[:-2, -1]) \
                           + r * (sol[1:-1, 0] - 2 * sol[1:-1, -1] + sol[1:-1, -2])
 
     #Update next time step
     sol[:] = sol_new[:]
-    sol = sol/(np.sum(sol)) #cheat with mass conservation. Assume uniform loss over each cell
+    #sol[:] = sol[:]/(np.sum(sol[:])) #cheat with mass conservation. Assume uniform loss over each cell
 
 def init_fields(X,Y):
     # Read the initial temperature field from file
@@ -107,12 +107,12 @@ def init_fields(X,Y):
     #u = -np.pi*A*np.sin(np.pi*(1)*X)*np.cos(np.pi*Y)
     #v = -np.pi*A*np.cos(np.pi*(1)*X)*np.sin(np.pi*Y)*(1-2*epsilon)
 
-    #u = np.sin(1*X) * np.cos(1*Y)
-    #v = np.cos(1*X) * np.cos(1*Y)
+    u = np.sin(1*X) * np.cos(1*Y)*0.1
+    v = np.cos(1*X) * np.cos(1*Y)*0.1
    # u = np.random.rand(N, N)*1
    # v = np.random.rand(N, N)*1
-    u = np.ones((N,N))*1
-    v = np.ones((N,N))*1
+    #u = np.ones((N,N))*1
+    #v = np.ones((N,N))*1
     cu = dt * np.max(u) / dx
     cv = dt * np.max(v) / dx
     assert (((cu ** 2) / r) + ((cv ** 2) / r) <= 2), ('dt might be too high or diffusion constant might be too low')
@@ -153,8 +153,9 @@ def iterate(field,u,v, local_field, local_field0,local_u,local_v, timesteps, ima
             if rank == 0:
                 #write_field(field, m)
                 #plt.imshow(field.T,cmap='jet')
-                axs[0].imshow(field.T, cmap='jet')  # ,vmax=1,vmin=0)
-                axs[1].imshow((u.T), cmap='jet')
+                axs[0].imshow(field, cmap='jet')  # ,vmax=1,vmin=0)
+                axs[1].imshow((v), cmap='jet')
+                #plt.show()
                 plt.pause(0.05)
 
 

@@ -15,13 +15,13 @@ n = int(np.ceil(tend / dt))
 u = np.ones((N, N)) * 1
 v = np.ones((N, N)) * 1
 
-u = np.sin(4*X) * np.cos(4*Y) * 0.1
-v = np.cos(4*X) * np.cos(4*Y) * 0.1
+#u = np.sin(X) * np.cos(Y) * 0.1
+#v = np.cos(X) * np.cos(Y) * 0.1
 
 # u = np.random.rand(N, N)*1
 # v = np.random.rand(N, N)*1
 
-D = 0.008
+D = 0.08
 r = dt * D / (dx ** 2)
 cell_Reynold = np.max(u) / N / D
 Peclet = np.max(u) / N / D
@@ -84,6 +84,6 @@ for t in range(n):
         # plt.pause(0.005)
         #   plt.imshow(sol)
         #   plt.show()
-        axs[0].imshow(sol.T, cmap='jet')  # ,vmax=1,vmin=0)
+        axs[0].imshow(sol, cmap='jet')  # ,vmax=1,vmin=0)
         axs[1].imshow(v, cmap='jet')
-        plt.pause(0.005)
+        plt.pause(0.05)

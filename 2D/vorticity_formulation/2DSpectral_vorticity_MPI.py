@@ -13,22 +13,25 @@ import matplotlib.animation as animation
 # sys.path.append(parent)
 
 # parameters
-tend = 10
-dt = 1e-2
+tend = 100
+dt = 1e-3
 Nstep = int(ceil(tend / dt))
-N = Nx = Ny = 64;  # grid size
+N = Nx = Ny = 512;  # grid size
 t = 0
-nu = 5e-3 # viscosity
-ICchoice = 'omegahat1'
-aniNr = 0.05 * Nstep
+nu = 5e-5 # viscosity
+ICchoice = 'omega3'
+aniNr = 0.0001 * Nstep
 save_dt = dt
-save_every = 0.1*Nstep
-save_interval = int(ceil(0.1*Nstep))
+save_every = 0.01*Nstep
+save_interval = int(ceil(save_every))
+global store_counter
+store_counter = 1
 t_list = linspace(0, tend, 1 / save_dt + 1)
 
 # ------------MPI setup---------
 comm = MPI.COMM_WORLD
 num_processes = comm.Get_size()
+print('number of processes = ',num_processes)
 rank = comm.Get_rank()
 Np = int(N / num_processes)
 # slab decomposition, split arrays in x direction in physical space, in ky direction in
@@ -65,9 +68,19 @@ def fftn_mpi(u, fu):
 
 # ----Initialize Velocity in Fourier space-----------
 def IC_condition(Nx, Np, u, v, u_hat, v_hat, ICchoice, omega, omega_hat, X, Y):
+    #todo this initial condition function does not work for any amount of processes
+    # I need to discretize the initial condition amongst the processes after setting IC.
     if ICchoice == 'randomVel':
         u = random.rand(Np, Ny)
         v = random.rand(Np, Ny)
+      #  u = u / npmax(u)
+       # v = v / npmax(v)
+        u_hat = fftn_mpi(u, u_hat)
+        v_hat = fftn_mpi(v, v_hat)
+        omega_hat = 1j * (Kx * v_hat - Ky * u_hat);
+    if ICchoice == 'TaylorGreen':
+        u = sin(3*X)*cos(3*Y)
+        v = -cos(3*X)*sin(3*Y)
       #  u = u / npmax(u)
        # v = v / npmax(v)
         u_hat = fftn_mpi(u, u_hat)
@@ -109,6 +122,22 @@ def IC_condition(Nx, Np, u, v, u_hat, v_hat, ICchoice, omega, omega_hat, X, Y):
     if ICchoice == 'omega1':
         omega = sin(X)*cos(Y)
         omega_hat = fftn_mpi(omega, omega_hat)
+    if ICchoice == 'omegahatrandom':
+        omega_hat = random.rand(N,Np)*1j+random.rand(N,Np)
+        binary = random.choice([0,1],size=(N,Np),p=[7./10,3./10])
+        omega_hat = omega_hat*binary
+    if ICchoice == 'omega3':
+        H = exp(-((2*X - pi + pi / 5) ** 2 + (4*Y - pi + pi / 5) ** 2) / 0.3) - exp(
+            -((2*X - pi - pi / 5) ** 2 + (3*Y - pi + pi / 5) ** 2) / 0.2) + exp(
+            -((3*X - pi - pi / 5) ** 2 + (2*Y - pi - pi / 5) ** 2) / 0.4)+exp(-((2*X - pi + pi / 5)**2 + (Y - pi + pi / 5) ** 2) / 0.3) - exp(
+            -((X - pi - pi / 5)**2 + (Y - pi + pi / 5) ** 2) /0.2) + exp(-((X - pi - pi / 5)**2 + (3*Y - pi - pi / 5)**2)/0.4)+\
+            exp(-((X - pi + pi / 5)**2 + (Y - pi + pi / 5) ** 2) / 0.3) + exp(
+            -((X - pi - pi / 5)**2 + (3*Y - pi + pi / 5) ** 2) /0.3) - exp(-((X - pi - pi / 5)**2 + (Y - pi - pi / 5)**2)/0.4);
+        epsilon = 0.4;
+        Noise = random.rand(Np, Ny)
+        omega = H + Noise*epsilon
+        omega_hat = (fftn_mpi(omega, omega_hat))
+        omega = real(ifftn_mpi(omega_hat, omega))
     if ICchoice == 'omega2':
 
         H = exp(-((X - pi + pi / 5)**2 + (Y - pi + pi / 5) ** 2) / 0.3) - exp(
@@ -165,15 +194,18 @@ def output(save_counter, omega, u, v, x, y, Nx, Ny, rank, time, plotstring):
             # reshape the ''list''
             u_all = asarray(u_all).reshape(Nx, Ny)
             v_all = asarray(v_all).reshape(Nx, Ny)
-            im = plt.imshow(sqrt((u_all ** 2) + (v_all ** 2)), cmap='jet', animated=True)
+            #im = plt.imshow(sqrt((u_all ** 2) + (v_all ** 2)), cmap='jet', animated=True)
             # im = plt.quiver(x,y,u_all,v_all)
-            ims.append([im])
+            plt.imshow(u_all, cmap='jet', animated=True)
+            plt.pause(0.05)
+           # ims.append([im])
           #  plt.show()
         if plotstring == 'VorticityAnimation':
             omega_all = asarray(omega_all).reshape(Nx, Ny)
             im = plt.imshow(abs(omega_all), cmap='jet', animated=True)
             ims.append([im])
            # plt.show()
+            plt.pause(0.05)
         if plotstring == 'store':
             omega_all = asarray(omega_all).reshape(Nx, Ny)
             u_all = asarray(u_all).reshape(Nx, Ny)
@@ -186,20 +218,23 @@ def output(save_counter, omega, u, v, x, y, Nx, Ny, rank, time, plotstring):
                 omega_storage_init = omega_all
                 save('datafiles/u/u_vel_t_' + str(round(time)), u_storage_init)
                 save('datafiles/v/v_vel_t_' + str(round(time)), v_storage_init)
-                save('datafiles/omega/omega_t_' + str(round(time)), omega_storage_init)
+                #save('datafiles/omega/omega_t_' + str(round(time)), omega_storage_init)
                 #save('datafiles/time/tlist_t_' + str(round(time)), t_list)
 
             if(t!=0):
                 u_storage[save_counter%save_interval] = u_all
                 v_storage[save_counter%save_interval] = v_all
-                omega_storage[save_counter%save_interval] = omega_all
+                #omega_storage[save_counter%save_interval] = omega_all
 
 
             if (save_counter%save_interval==(save_interval-1) and t!= 0 ):
-                save('datafiles/u/u_vel_t_'+str(round(time)), u_storage)
-                save('datafiles/v/v_vel_t_'+str(round(time)), v_storage)
-                save('datafiles/omega/omega_t_'+str(round(time)), omega_storage)
+                global store_counter
+                save('datafiles/u/u_vel_t_'+str(store_counter), u_storage)
+                save('datafiles/v/v_vel_t_'+str(store_counter), v_storage)
+                #save('datafiles/omega/omega_t_'+str(store_counter), omega_storage)
                 #save('datafiles/time/tlist_t_'+str(round(time)), t_list)
+
+                store_counter +=1
 
 # initialize x,y kx, ky coordinate
 def IC_coor(Nx, Ny, Np, dx, dy, rank, num_processes):
@@ -310,7 +345,7 @@ omega = ifftn_mpi(omega_hat_t0,omega)
 step = 1
 pbar = tqdm(total=int(Nstep))
 save_counter = 0
-plotstring = ('store')
+plotstring = ('VorticityAnimation')
 fig = plt.figure()
 ims = []
 
@@ -357,14 +392,18 @@ for n in range(Nstep + 1):
     omega_hat = omega_hat1
     '''
 
-
-    if(t!=0):
-        omega = ifftn_mpi(omega_hat, omega)
-        output(save_counter, omega, u, v, x, y, Nx, Ny, rank, t, plotstring)
-        save_counter += 1
-    if (t==0):
-        omega = ifftn_mpi(omega_hat, omega)
-        output(save_counter, omega, u, v, x, y, Nx, Ny, rank, t, plotstring)
+    if (plotstring=='store'):
+        if(t!=0):
+            omega = ifftn_mpi(omega_hat, omega)
+            output(save_counter, omega, u, v, x, y, Nx, Ny, rank, t, plotstring)
+            save_counter += 1
+        if (t==0):
+            omega = ifftn_mpi(omega_hat, omega)
+            output(save_counter, omega, u, v, x, y, Nx, Ny, rank, t, plotstring)
+    if plotstring in ['VelocityAnimation', 'VorticityAnimation']:
+        if (n%aniNr==0):
+            omega = ifftn_mpi(omega_hat, omega)
+            output(save_counter, omega, u, v, x, y, Nx, Ny, rank, t, plotstring)
 
     t = t + dt;
     step += 1
