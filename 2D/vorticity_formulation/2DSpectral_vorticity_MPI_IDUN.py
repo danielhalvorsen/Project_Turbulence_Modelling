@@ -23,7 +23,7 @@ Nstep = int(ceil(tend / dt))
 N = Nx = Ny = 256;  # grid size
 t = 0
 nu = 5e-5 # viscosity
-ICchoice = 'omega3'
+ICchoice = 'omega4'
 aniNr = 0.05 * Nstep
 save_dt = dt
 save_every = 0.01*Nstep
@@ -124,6 +124,21 @@ def IC_condition(Nx, Np, u, v, u_hat, v_hat, ICchoice, omega, omega_hat, X, Y):
             exp(-((X - pi + pi / 5)**2 + (Y - pi + pi / 5) ** 2) / 0.3) + exp(
             -((X - pi - pi / 5)**2 + (3*Y - pi + pi / 5) ** 2) /0.3) - exp(-((X - pi - pi / 5)**2 + (Y - pi - pi / 5)**2)/0.4);
         epsilon = 0.4;
+        Noise = random.rand(Np, Ny)
+        omega = H + Noise*epsilon
+        omega_hat = (fftn_mpi(omega, omega_hat))
+        omega = real(ifftn_mpi(omega_hat, omega))
+    if ICchoice == 'omega4':
+        H = exp(-((2*X - pi + pi / 5) ** 2 + (4*Y - pi + pi / 5) ** 2) / 0.3) - exp(
+            -((2*X - pi - pi / 5) ** 2 + (3*Y - pi + pi / 5) ** 2) / 0.2) + exp(
+            -((X + pi - pi / 5) ** 2 + (2*Y - pi - pi / 5) ** 2) / 0.4)+exp(-((2*X - pi + pi / 5)**2 + (Y - pi + pi / 5) ** 2) / 0.3) - exp(
+            -((X - pi - pi / 5)**2 + (Y - pi + pi / 5) ** 2) /0.2) + exp(-((X - pi - pi / 5)**2 + (3*Y - pi - pi / 5)**2)/0.4)+\
+            exp(-((X - pi + pi / 5)**2 + (Y - pi + pi / 5) ** 2) / 0.3) + exp(
+            -((X - pi - pi / 5)**2 + (3*Y - pi + pi / 5) ** 2) /0.3) + exp(-((X + pi - pi / 5)**2 + (Y + pi - pi / 5)**2)/0.4)-\
+            exp(-((X - pi + pi / 5) ** 2 + (Y - pi + pi / 5) ** 2) / 0.3) + exp(
+            -((2*X - pi - pi / 5) ** 2 + (3*Y - pi + pi / 5) ** 2) / 0.2) + exp(
+            -((X - pi - pi / 5) ** 2 + (Y - pi - pi / 5) ** 2) / 0.4)
+        epsilon = 0.7;
         Noise = random.rand(Np, Ny)
         omega = H + Noise*epsilon
         omega_hat = (fftn_mpi(omega, omega_hat))
