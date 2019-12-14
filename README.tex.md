@@ -7,7 +7,7 @@
 <p align="center">
   <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/animation64_160k.gif">
 </p>
-Preliminary 3D-isotropic turbulence using N=64, Re=1600
+3D-isotropic turbulence using N=64, Re=1600
 
 
 <p align="center">
@@ -24,10 +24,19 @@ Preliminary 3D-isotropic turbulence using N=64, Re=1600
 
  
 
+
+<p align="center">
+  <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/nice2.gif">
+</p>
+2D- vorticity field. Re=1600, N=256. 
+
+
+
 <p align="center">
   <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/fieldspread2.gif">
 </p>
-2D Advection-Diffusion equation solved with an initial concentration distribution. Different velocity field from the above simulation.
+2D Advection-Diffusion equation solved with an initial concentration distribution. Velocity input from above vorticity field.
 
  
 
+<img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/nice2.gif" width="425"/> <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/fieldspread2.gif" width="425"/> 

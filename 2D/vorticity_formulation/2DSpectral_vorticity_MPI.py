@@ -20,7 +20,7 @@ N = Nx = Ny = 256;  # grid size
 t = 0
 nu = 5e-5 # viscosity
 ICchoice = 'omega4'
-aniNr = 0.001 * Nstep
+aniNr = 0.05 * Nstep
 save_dt = dt
 save_every = 0.01*Nstep
 save_interval = int(ceil(save_every))
@@ -212,7 +212,7 @@ def output(save_counter, omega, u, v, x, y, Nx, Ny, rank, time, plotstring):
             #im = plt.imshow(sqrt((u_all ** 2) + (v_all ** 2)), cmap='jet', animated=True)
             # im = plt.quiver(x,y,u_all,v_all)
             plt.imshow(u_all, cmap='jet', animated=True)
-            plt.pause(0.05)
+           # plt.pause(0.05)
            # ims.append([im])
           #  plt.show()
         if plotstring == 'VorticityAnimation':
@@ -220,7 +220,7 @@ def output(save_counter, omega, u, v, x, y, Nx, Ny, rank, time, plotstring):
             im = plt.imshow(abs(omega_all), cmap='jet', animated=True)
             ims.append([im])
            # plt.show()
-            plt.pause(0.05)
+           # plt.pause(0.05)
         if plotstring == 'store':
             omega_all = asarray(omega_all).reshape(Nx, Ny)
             u_all = asarray(u_all).reshape(Nx, Ny)
