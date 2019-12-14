@@ -24,3 +24,10 @@ Preliminary 3D-isotropic turbulence using N=64, Re=1600
 
  
 
+<p align="center">
+  <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/fieldspread2.gif">
+</p>
+2D Advection-Diffusion equation solved with an initial concentration distribution. Different velocity field from the above simulation.
+
+ 
+
