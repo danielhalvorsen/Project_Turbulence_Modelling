@@ -7,24 +7,20 @@
 <p align="center">
   <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/animation64_160k.gif">
 </p>
-Preliminary isotropic turbulence using N=64, Re=160K. Re will be lowered and number of cells will be increased.
+Preliminary 3D-isotropic turbulence using N=64, Re=1600
 
 
 <p align="center">
-  <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/VorticityAnimation.gif">
+  <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/nice.gif">
 </p>
-Two dimensional Navier Stokes, magnitude of vorticity, N=256, Re=10k.
-
-<p align="center">
-  <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/256_256_5e-4nu-1e-3dt.gif">
-</p>
-Two dimensional Navier Stokes, magnitude of velocity
+2D- vorticity field. Re=1600, N=256. Smaller vortices give energy to larger vortices.
 
 
 <p align="center">
-  <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/animationVelocitynu5e-4N64dt1e-2tend200.gif">
+  <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/fieldspread.gif">
 </p>
-Two dimensional Navier Stokes, magnitude of velocity
+2D Advection-Diffusion equation solved with an initial concentration distribution. The advected velocity field is taken to be the velocities
+ in the x- and y-direction from the above vorticity field.
 
-
+ 
 
