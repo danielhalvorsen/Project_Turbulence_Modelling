@@ -12,7 +12,7 @@ nu = 0.000000625
 # nu = 0.00000625
 T = 30
 dt = 0.01
-N = int(2 ** 6)
+N = int(2 ** 7)
 N_half = int(N / 2 + 1)
 comm = MPI.COMM_WORLD
 num_processes = comm.Get_size()
@@ -106,7 +106,7 @@ t = 0.0
 tstep = 0
 mid_idx = int(N / 2)
 pbar = tqdm(total=int(T / dt))
-
+plotting = 'animation'
 fig = plt.figure()
 # ims is a list of lists, each row is a list of artists to draw in the
 # current frame; here we are just animating one artist, the image, in
@@ -126,16 +126,18 @@ while t < T - 1e-8:
     for i in range(3):
         # Inverse Fourier transform after RK4 algorithm
         U[i] = ifftn_mpi(U_hat[i], U[i])
-    # if save_animation == True and tstep % save_nr == 0:
-    # Save the animation every "save_nr" time step
+
+
     if tstep%30==0:
         u_plot = comm.gather(U, root=0)
         if rank==0:
             U_test = concatenate(u_plot, axis=1)
-            im = plt.imshow(U_test[0][:,:,int(N/2)],cmap='jet', animated=True)
-            ims.append([im])
-            #plt.imshow(U_test[0][:,:,int(N/2)],cmap='jet')
-            #plt.pause(0.05)
+            if plotting == 'animation':
+                im = plt.imshow(U_test[0][:,:,int(N/2)],cmap='jet', animated=True)
+                ims.append([im])
+            if plotting == 'plot':
+                plt.imshow(U_test[0][:,:,int(N/2)],cmap='jet')
+                plt.pause(0.05)
     tstep += 1
     pbar.update(1)
 
