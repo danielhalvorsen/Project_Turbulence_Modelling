@@ -1,5 +1,5 @@
 # Project - Turbulence Modelling #
-### DNS solver for the Navier-Stokes equations using a spectral method ###
+### 3D DNS solver for the Navier-Stokes equations using a spectral method ###
 
 * Study of turbulent diffusion
 
@@ -9,7 +9,7 @@
 </p>
 3D-isotropic turbulence using N=64, Re=1.6M. Taylor Green Vortex.
 
- 
+### 2D DNS solver for the Navier-Stokes equations using a spectral method ###
 ### Note: timescales on animations not fixed. ###
  
 <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/nice.gif" width="425"/> <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/fieldspread.gif" width="425"/>
