@@ -5,10 +5,9 @@
 
 
 <p align="center">
-  <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/animation64_160k.gif">
+  <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/TG3D_64.gif">
 </p>
-3D-isotropic turbulence using N=64, Re=1600
-
+3D-isotropic turbulence using N=64, Re=1.6M. Taylor Green Vortex.
 
  
 ### Note: timescales on animations not fixed. ###
