@@ -8,6 +8,8 @@ from numpy.fft import fftfreq, fft, ifft, fft2, ifft2, fftshift, ifftshift
 from mpi4py import MPI
 from tqdm import tqdm
 import matplotlib.animation as animation
+from basic_units import radians, degrees, cos
+from radians_plot import *
 
 # parent = os.path.abspath(os.path.join(os.path.dirname(__file__), '.'))
 # sys.path.append(parent)
@@ -19,8 +21,8 @@ Nstep = int(ceil(tend / dt))
 N = Nx = Ny = 256;  # grid size
 t = 0
 nu = 5e-5 # viscosity
-ICchoice = 'omega4'
-aniNr = 0.05 * Nstep
+ICchoice = 'omega3'
+aniNr = 0.01 * Nstep
 save_dt = dt
 save_every = 0.01*Nstep
 save_interval = int(ceil(save_every))
@@ -217,8 +219,35 @@ def output(save_counter, omega, u, v, x, y, Nx, Ny, rank, time, plotstring):
           #  plt.show()
         if plotstring == 'VorticityAnimation':
             omega_all = asarray(omega_all).reshape(Nx, Ny)
-            im = plt.imshow(abs(omega_all), cmap='jet', animated=True)
-            ims.append([im])
+
+            Lx = 2 * pi;
+            Ly = 2 * pi;
+            dx = Lx / Nx;
+            dy = Ly / Ny;
+            x = np.arange(0, N, 1) * Lx / N
+            y = np.arange(0, N, 1) * Ly / N
+            [X, Y] = np.meshgrid(x, y)
+            #im = plt.imshow(abs(omega_all), cmap='jet', animated=True)
+            #plt.imshow(omega_all)
+            plt.contourf(X,Y,omega_all, levels=30, xunits=radians, yunits=radians, cmap='jet')
+            plt.xlim([0, 2 * np.pi])
+            plt.ylim([0, 2 * np.pi])
+            # plt.xlabel('x-direction (m)')
+            # plt.ylabel('y-direction (m)')
+            ax = plt.gca()
+            ax.set_xlabel('x-direction (m)')
+            ax.set_ylabel('y-direction (m)')
+
+            ax.xaxis.set_major_locator(plt.MultipleLocator(np.pi / 2))
+            ax.xaxis.set_minor_locator(plt.MultipleLocator(np.pi / 12))
+            ax.xaxis.set_major_formatter(plt.FuncFormatter(multiple_formatter()))
+            ax.yaxis.set_major_locator(plt.MultipleLocator(np.pi / 2))
+            ax.yaxis.set_minor_locator(plt.MultipleLocator(np.pi / 12))
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(multiple_formatter()))
+            plt.colorbar()
+            plt.show()
+
+           # ims.append([im])
            # plt.show()
            # plt.pause(0.05)
         if plotstring == 'store':
@@ -314,7 +343,9 @@ Kx = K[1]
 Ky = K[0]
 K2 = sum(K * K, 0, dtype=int)
 '''
-
+plt.imshow(X)
+plt.colorbar()
+plt.show()
 LapHat = K2.copy()
 LapHat *= -1
 #K2[0][0] = 1
@@ -416,7 +447,7 @@ for n in range(Nstep + 1):
             omega = ifftn_mpi(omega_hat, omega)
             output(save_counter, omega, u, v, x, y, Nx, Ny, rank, t, plotstring)
     if plotstring in ['VelocityAnimation', 'VorticityAnimation']:
-        if (n%aniNr==0):
+        if (n%9000==0):
             omega = ifftn_mpi(omega_hat, omega)
             output(save_counter, omega, u, v, x, y, Nx, Ny, rank, t, plotstring)
 

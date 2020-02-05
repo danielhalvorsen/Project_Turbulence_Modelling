@@ -18,19 +18,13 @@ except ImportError:
 
 # parameters
 tend = 100
-dt = 1e-3
+dt = 1e-1
 Nstep = int(ceil(tend / dt))
-N = Nx = Ny = 256;  # grid size
+N = Nx = Ny = 16;  # grid size
 t = 0
-nu = 5e-5 # viscosity
+nu = 5e-3 # viscosity
 ICchoice = 'omega4'
-aniNr = 0.05 * Nstep
-save_dt = dt
-save_every = 0.01*Nstep
-save_interval = int(ceil(save_every))
-global store_counter
-store_counter = 1
-t_list = linspace(0, tend, int(1 / save_dt + 1))
+
 
 # ------------MPI setup---------
 comm = MPI.COMM_WORLD
@@ -155,89 +149,6 @@ def IC_condition(Nx, Np, u, v, u_hat, v_hat, ICchoice, omega, omega_hat, X, Y):
     return omega_hat
 
 
-# ------output function----
-# this function output vorticty contour
-def output(save_counter, omega, u, v, x, y, Nx, Ny, rank, time, plotstring):
-    # collect values to root
-    omega_all = comm.gather(omega, root=0)
-    u_all = comm.gather(u, root=0)
-    v_all = comm.gather(v, root=0)
-    x_all = comm.gather(x, root=0)
-    y_all = comm.gather(y, root=0)
-    if rank == 0:
-        if plotstring == 'Vorticity':
-            # reshape the ''list''
-            omega_all = asarray(omega_all).reshape(Nx, Ny)
-            x_all = asarray(x_all).reshape(Nx, Ny)
-            y_all = asarray(y_all).reshape(Nx, Ny)
-            plt.contourf(x_all, y_all, omega_all, cmap='jet')
-            delimiter = ''
-            title = delimiter.join(['vorticity contour, time=', str(time)])
-            plt.xlabel('x')
-            plt.ylabel('y')
-            plt.title(title)
-            plt.show()
-            filename = delimiter.join(['vorticity_t=', str(time), '.png'])
-            plt.savefig(filename, format='png')
-        if plotstring == 'Velocity':
-            # reshape the ''list''
-            u_all = asarray(u_all).reshape(Nx, Ny)
-            v_all = asarray(v_all).reshape(Nx, Ny)
-            x_all = asarray(x_all).reshape(Nx, Ny)
-            y_all = asarray(y_all).reshape(Nx, Ny)
-            # plt.contourf(x_all, y_all, (u_all ** 2 + v_all ** 2), cmap='jet')
-            plt.imshow((u_all ** 2 + v_all ** 2), cmap='jet')
-            delimiter = ''
-            title = delimiter.join(['Velocity contour, time=', str(time)])
-            plt.xlabel('x')
-            plt.ylabel('y')
-            plt.title(title)
-            plt.show()
-            filename = delimiter.join(['velocity_t=', str(time), '.png'])
-            plt.savefig(filename, format='png')
-        if plotstring == 'VelocityAnimation':
-            # reshape the ''list''
-            u_all = asarray(u_all).reshape(Nx, Ny)
-            v_all = asarray(v_all).reshape(Nx, Ny)
-            im = plt.imshow(sqrt((u_all ** 2) + (v_all ** 2)), cmap='jet', animated=True)
-            # im = plt.quiver(x,y,u_all,v_all)
-            ims.append([im])
-          #  plt.show()
-        if plotstring == 'VorticityAnimation':
-            omega_all = asarray(omega_all).reshape(Nx, Ny)
-            im = plt.imshow(abs(omega_all), cmap='jet', animated=True)
-            ims.append([im])
-           # plt.show()
-        if plotstring == 'store':
-            omega_all = asarray(omega_all).reshape(Nx, Ny)
-            u_all = asarray(u_all).reshape(Nx, Ny)
-            v_all = asarray(v_all).reshape(Nx, Ny)
-            #if (save_counter % save_interval):
-
-            if (t==0):
-                u_storage_init = u_all
-                v_storage_init = v_all
-                omega_storage_init = omega_all
-                save('datafiles/u/u_vel_t_' + str(round(time)), u_storage_init)
-                save('datafiles/v/v_vel_t_' + str(round(time)), v_storage_init)
-                #save('datafiles/omega/omega_t_' + str(round(time)), omega_storage_init)
-                #save('datafiles/time/tlist_t_' + str(round(time)), t_list)
-
-            if(t!=0):
-                u_storage[save_counter%save_interval] = u_all
-                v_storage[save_counter%save_interval] = v_all
-                #omega_storage[save_counter%save_interval] = omega_all
-
-
-            if (save_counter%save_interval==(save_interval-1) and t!= 0 ):
-                global store_counter
-                print('Storing next time-sequence of variables')
-                save('datafiles/u/u_vel_t_'+str(store_counter), u_storage)
-                save('datafiles/v/v_vel_t_'+str(store_counter), v_storage)
-                #save('datafiles/omega/omega_t_'+str(store_counter), omega_storage)
-                #save('datafiles/time/tlist_t_'+str(round(time)), t_list)
-
-                store_counter +=1
 
 # initialize x,y kx, ky coordinate
 def IC_coor(Nx, Ny, Np, dx, dy, rank, num_processes):
@@ -296,14 +207,12 @@ x = Y[0]
 y = Y[0]
 kx = fftfreq(N, 1. / N)
 ky = kx.copy()
-
 '''
 K = array(meshgrid(kx, ky[sx], indexing='ij'), dtype=int)
 Kx = K[1]
 Ky = K[0]
 K2 = sum(K * K, 0, dtype=int)
 '''
-
 
 LapHat = K2.copy()
 LapHat *= -1
@@ -315,10 +224,6 @@ iky_over_K2 = 1j * Ky * K2_inv
 
 kmax_dealias = 2. / 3. * (N / 2 + 1)
 dealias = array((abs(Kx) < kmax_dealias) * (abs(Ky) < kmax_dealias), dtype=bool)
-
-plt.imshow(K2,cmap='viridis')
-plt.colorbar()
-plt.show()
 
 # ----Initialize Variables-------(hat denotes variables in Fourier space,)
 u_hat = zeros((Nx, Np), dtype=complex);
@@ -339,16 +244,9 @@ rhs = zeros((Np, Nx), dtype=float);
 visc_term_complex = zeros((Ny, Np), dtype=complex)
 visc_term_real = zeros((Np, Ny), dtype=float)
 v_grad_omega_hat = zeros((Ny, Np), dtype=complex)
-u_storage = empty((save_interval, Nx, Nx), dtype=float)
-v_storage = empty((save_interval, Nx, Nx), dtype=float)
-omega_storage = empty((save_interval, Nx, Nx), dtype=float)
-u_storage_init = empty((1, Nx, Nx), dtype=float)
-v_storage_init = empty((1, Nx, Nx), dtype=float)
-omega_storage_init = empty((1, Nx, Nx), dtype=float)
 
 # generate initial velocity field
 omega_hat_t0 = IC_condition(Nx, Np, u, v, u_hat, v_hat, ICchoice, omega, omega_hat, X, Y)
-# omega_hat_t0 = 1j * (Kx * v_hat - Ky * u_hat)*dealias;
 omega = ifftn_mpi(omega_hat_t0,omega)
 
 step = 1
@@ -356,10 +254,6 @@ try:
     pbar = tqdm(total=int(Nstep))
 except:
     pass
-save_counter = 0
-plotstring = ('store')
-fig = plt.figure()
-ims = []
 
 # ----Main Loop-----------
 for n in range(Nstep + 1):
@@ -377,44 +271,11 @@ for n in range(Nstep + 1):
     omega_ky = ifftn_mpi(1j*Ky * omega_hat, omega_ky)
     v_grad_omega = (u * omega_kx + v * omega_ky)
     v_grad_omega_hat = fftn_mpi(v_grad_omega, v_grad_omega_hat)*dealias
-
-
     visc_term_complex = -nu * K2 * omega_hat
-
-    #rhs_hat = visc_term_complex - u_hat * 1j * Kx * omega_hat * dealias - v_hat * 1j * \
-     #         Ky * omega_hat * dealias
- #   rhs_hat = visc_term_complex - v_grad_omega_hat
-  #  rhs = ifftn_mpi(rhs_hat, rhs)
 
     omega_hat_new = 1 / (1 / dt - 0.5 * nu * LapHat)*(
                 (1 / dt + 0.5 * nu * LapHat)* omega_hat - v_grad_omega_hat);
     omega_hat = omega_hat_new.copy()
-
-   # omega = ifftn_mpi(omega_hat,omega)
-    '''
-    if n%100==0:
-        omega = ifftn_mpi(omega_hat,omega)
-        plt.imshow(abs(omega),cmap='jet')
-        #plt.imshow(sqrt((u ** 2) + (v ** 2)), cmap='jet', animated=True)
-        plt.show()
-    '''
-    '''
-    omega_hat1 = omega_hat0 = omega_hat
-    for rk in range(4):
-        if rk < 3: omega_hat = omega_hat0 + b[rk] * dt * rhs_hat
-        omega_hat1 += a[rk] * dt * rhs_hat
-    omega_hat = omega_hat1
-    '''
-
-
-    if(t!=0):
-        omega = ifftn_mpi(omega_hat, omega)
-        output(save_counter, omega, u, v, x, y, Nx, Ny, rank, t, plotstring)
-        save_counter += 1
-    if (t==0):
-        omega = ifftn_mpi(omega_hat, omega)
-        output(save_counter, omega, u, v, x, y, Nx, Ny, rank, t, plotstring)
-
 
     t = t + dt;
     step += 1
@@ -422,8 +283,3 @@ for n in range(Nstep + 1):
         pbar.update(1)
     except:
         pass
-if rank == 0:
-    if plotstring in ['VelocityAnimation', 'VorticityAnimation']:
-        ani = animation.ArtistAnimation(fig, ims, interval=2, blit=True,
-                                        repeat_delay=None)
-        ani.save('animationVelocity.gif', writer='imagemagick')
