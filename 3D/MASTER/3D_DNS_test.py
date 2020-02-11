@@ -8,11 +8,11 @@ import matplotlib.animation as animation
 
 # U is set to dtype float32
 # Reynoldsnumber determined by nu Re = 1600, nu = 1/1600
-nu = 0.000000625
+nu = 0.000625
 # nu = 0.00000625
 T = 30
 dt = 0.01
-N = int(2 ** 7)
+N = int(2 ** 6)
 N_half = int(N / 2 + 1)
 comm = MPI.COMM_WORLD
 num_processes = comm.Get_size()
@@ -106,7 +106,7 @@ t = 0.0
 tstep = 0
 mid_idx = int(N / 2)
 pbar = tqdm(total=int(T / dt))
-plotting = 'animation'
+plotting = 'plot'
 fig = plt.figure()
 # ims is a list of lists, each row is a list of artists to draw in the
 # current frame; here we are just animating one artist, the image, in
@@ -128,7 +128,7 @@ while t < T - 1e-8:
         U[i] = ifftn_mpi(U_hat[i], U[i])
 
 
-    if tstep%30==0:
+    if tstep%3==0:
         u_plot = comm.gather(U, root=0)
         if rank==0:
             U_test = concatenate(u_plot, axis=1)
@@ -136,7 +136,7 @@ while t < T - 1e-8:
                 im = plt.imshow(U_test[0][:,:,int(N/2)],cmap='jet', animated=True)
                 ims.append([im])
             if plotting == 'plot':
-                plt.imshow(U_test[0][:,:,int(N/2)],cmap='jet')
+                plt.contourf(X[0],X[1],X[2],U_test,cmap='jet')
                 plt.pause(0.05)
     tstep += 1
     pbar.update(1)
