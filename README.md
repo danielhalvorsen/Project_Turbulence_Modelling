@@ -4,19 +4,12 @@
 * Study of turbulent diffusion
 
 
-%<p align="center">
-%  <img width="460" height="300" src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/TG3D_64.gif">
-%</p>
-%3D-isotropic turbulence using N=64, Re=1.6M. Taylor Green Vortex.
 
 
 
-<img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/nice.gif" width="425"/> <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/TG3D_64.gif" width="425"/>
-3D-isotropic turbulence using N=64, Re=1.6M. Taylor Green Vortex.
- 
+<img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/TG3D_64.gif" width="425"/> <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/TG3D_128.gif" width="425"/>
+3D-isotropic turbulence using Re=1.6M. Taylor Green Vortex. Left: N=64, Right: N=128.
 
-<img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/nice2.gif" width="425"/> <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/TG3D_128.gif" width="425"/>
-3D-isotropic turbulence using N=128, Re=1.6M. Taylor Green Vortex.
 
 
 
