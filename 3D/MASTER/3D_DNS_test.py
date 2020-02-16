@@ -286,7 +286,7 @@ U[1] = -cos(X[0]) * sin(X[1]) * cos(X[2])
 U[2] = 0
 for i in range(3):
     U_hat[i] = fftn_mpi(U[i], U_hat[i])
-
+print('finished transforming IC')
 # Time integral using a Runge Kutta scheme
 t = 0.0
 tstep = 0
