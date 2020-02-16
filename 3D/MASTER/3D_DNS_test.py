@@ -55,7 +55,7 @@ K = array(meshgrid(kx[k2],kx,kx[k1],indexing='ij'),dtype=int)
 U = empty((3, N1, N2, N), dtype=float32)
 U_hat = empty((3, N2, N, int(N_half/P1)), dtype=complex)
 P = empty((N1, N2, N))
-P_hat = empty((N, N2, int(N_half/P1)), dtype=complex)
+P_hat = empty((N2, N, int(N_half/P1)), dtype=complex)
 U_hat0 = empty((3, N2, N, int(N_half/P1)), dtype=complex)
 U_hat1 = empty((3, N2, N, int(N_half/P1)), dtype=complex)
 
@@ -69,7 +69,7 @@ Uc_hat_z = empty((N1, N2, int(N_nyquist)), dtype=complex)
 Uc_hat_xr = empty((N, N2, int(N_half/P1)), dtype=complex)
 
 
-dU = empty((3, N1, N2, N_half), dtype=complex)
+dU = empty((3, N2, N, int(N_half/P1)), dtype=complex)
 curl = empty((3, N1, N2, N))
 
 #K = array(meshgrid(kx, kx[rank * Np:(rank + 1) * Np], kz, indexing="ij"), dtype=int)
@@ -131,7 +131,9 @@ def fftn_mpi(u, fu):
     commxy.Alltoall([Uc_hat_x, mpitype], [Uc_hat_xr, mpitype])
     Uc_hat_y[:] = rollaxis(Uc_hat_xr.reshape((P2,N2,N2,int(N_half/P1))),1).reshape(Uc_hat_y.shape)
     if rank==0:
-        print(shape(u))
+        print('shape of u',shape(u))
+        print('shape of Uc_hat_y', shape(Uc_hat_y))
+        print('shape of fu', shape(fu))
 
     fu[:]=fft(Uc_hat_y,axis=1)
     return fu
@@ -286,7 +288,7 @@ U[1] = -cos(X[0]) * sin(X[1]) * cos(X[2])
 U[2] = 0
 for i in range(3):
     U_hat[i] = fftn_mpi(U[i], U_hat[i])
-print('finished transforming IC')
+print('IC transformed')
 # Time integral using a Runge Kutta scheme
 t = 0.0
 tstep = 0
@@ -317,13 +319,14 @@ while t < T - 1e-8:
     if tstep%30==0:
         u_plot = comm.gather(U, root=0)
         if rank==0:
-            U_test = concatenate(u_plot, axis=1)
+            #U_test = concatenate(u_plot, axis=1)
             if plotting == 'animation':
                 im = plt.imshow(U_test[0][:,:,int(N/2)],cmap='jet', animated=True)
                 ims.append([im])
             if plotting == 'plot':
-                plt.imshow(U_test[0][:,:,int(N/2)],cmap='jet')
-                plt.pause(0.05)
+                print('shape of gathered U',shape(u_plot))
+                #plt.imshow(U_test[0][:,:,int(N/2)],cmap='jet')
+                plt.show()
             if plotting == 'spectrum':
                 spectrum(N, U_test[0], U_test[1], U_test[2])
 
