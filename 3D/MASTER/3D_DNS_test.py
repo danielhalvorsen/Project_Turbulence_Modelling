@@ -1,5 +1,5 @@
 from numpy import *
-from numpy.fft import fftfreq, fft, ifft, irfft2, rfft2,fftn,fftshift,rfft
+from numpy.fft import fftfreq, fft, ifft, irfft2, rfft2,fftn,fftshift,rfft,irfft
 from mpi4py import MPI
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -13,29 +13,66 @@ nu = 0.0000000625
 # nu = 0.00000625
 T = 40
 dt = 0.01
-N = int(2 ** 6)
-N_half = int(N / 2 + 1)
+L = 2*pi
+N = int(2 ** 4)
+N_half = int(N / 2)
+N_nyquist=int(N/2+1)
+P1 = 1
 comm = MPI.COMM_WORLD
 num_processes = comm.Get_size()
+mpitype = MPI.DOUBLE_COMPLEX
+
+if num_processes > 1:
+    P1 = 2
+
 rank = comm.Get_rank()
-Np = int(N / num_processes)
-X = mgrid[rank * Np:(rank + 1) * Np, :N, :N].astype(float) * 2 * pi / N
-# using np.empty() does not create a zero() list!
-U = empty((3, Np, N, N), dtype=float32)
-U_hat = empty((3, N, Np, N_half), dtype=complex)
-P = empty((Np, N, N))
-P_hat = empty((N, Np, N_half), dtype=complex)
-U_hat0 = empty((3, N, Np, N_half), dtype=complex)
-U_hat1 = empty((3, N, Np, N_half), dtype=complex)
-dU = empty((3, N, Np, N_half), dtype=complex)
-Uc_hat = empty((N, Np, N_half), dtype=complex)
-Uc_hatT = empty((Np, N, N_half), dtype=complex)
-U_mpi = empty((num_processes, Np, Np, N_half), dtype=complex)
-curl = empty((3, Np, N, N))
+
+P2 = int(num_processes/P1)
+N1 = int(N/P1)
+N2 = int(N/P2)
+
+
+commxz = comm.Split(rank/P1)
+commxy = comm.Split(rank%P1)
+
+xzrank = commxz.Get_rank()
+xyrank = commxy.Get_rank()
+
+
+x1 = slice(xzrank*N1,(xzrank+1)*N1)
+x2 = slice(xyrank*N2,(xyrank+1)*N2)
+X = mgrid[x1,x2,:N].astype(float)*L/N
+
 kx = fftfreq(N, 1. / N)
 kz = kx[:(N_half)].copy();
 kz[-1] *= -1
-K = array(meshgrid(kx, kx[rank * Np:(rank + 1) * Np], kz, indexing="ij"), dtype=int)
+
+k2 = slice(int(xyrank*N2),int((xyrank+1)*N2))
+k1 = slice(int(xzrank*N1/2),int((xzrank+1)*N1/2))
+K = array(meshgrid(kx[k2],kx,kx[k1],indexing='ij'),dtype=int)
+
+
+U = empty((3, N1, N2, N), dtype=float32)
+U_hat = empty((3, N2, N, int(N_half/P1)), dtype=complex)
+P = empty((N1, N2, N))
+P_hat = empty((N, N2, int(N_half/P1)), dtype=complex)
+U_hat0 = empty((3, N2, N, int(N_half/P1)), dtype=complex)
+U_hat1 = empty((3, N2, N, int(N_half/P1)), dtype=complex)
+
+Uc_hat = empty((N, N2, int(N_half/P1)), dtype=complex)
+Uc_hatT = empty((N2, N, int(N_half/P1)), dtype=complex)
+U_mpi = empty((num_processes, N1, N2, N_half), dtype=complex)
+
+Uc_hat_x = empty((N, N2, int(N_half/P1)), dtype=complex)
+Uc_hat_y = empty((N2, N, int(N_half/P1)), dtype=complex)
+Uc_hat_z = empty((N1, N2, int(N_nyquist)), dtype=complex)
+Uc_hat_xr = empty((N, N2, int(N_half/P1)), dtype=complex)
+
+
+dU = empty((3, N1, N2, N_half), dtype=complex)
+curl = empty((3, N1, N2, N))
+
+#K = array(meshgrid(kx, kx[rank * Np:(rank + 1) * Np], kz, indexing="ij"), dtype=int)
 K2 = sum(K * K, 0, dtype=int)
 K_over_K2 = K.astype(float) / where(K2 == 0, 1, K2).astype(float)
 kmax_dealias = 2. / 3. * (N_half)
@@ -45,9 +82,9 @@ dealias = array(
 
 a = [1. / 6., 1. / 3., 1. / 3., 1. / 6.]
 b = [0.5, 0.5, 1.]
-dir = '/home/danieloh/PycharmProjects/Project_Turbulence_Modelling/animation_folder/'
+#dir = '/home/danieloh/PycharmProjects/Project_Turbulence_Modelling/animation_folder/'
 
-def ifftn_mpi(fu, u):
+def ifftn_mpi2(fu, u):
     # Inverse Fourier transform
     Uc_hat[:] = ifft(fu, axis=0)
     comm.Alltoall([Uc_hat, MPI.DOUBLE_COMPLEX], [U_mpi, MPI.DOUBLE_COMPLEX])
@@ -55,13 +92,48 @@ def ifftn_mpi(fu, u):
     u[:] = irfft2(Uc_hatT, axes=(1, 2))
     return u
 
+def ifftn_mpi(fu,u):
+    #transform y-direction
+    Uc_hat_y[:]= ifft(fu,axis=1)
+    # Roll to x axis
+    Uc_hat_x[:] = rollaxis(Uc_hat_y.reshape((N2, P2, N2, int(N_half/P1))), 1).reshape(Uc_hat_x.shape)
+    #Communicate in xz plane
+    commxz.Alltoall([Uc_hat_x, mpitype], [Uc_hat_xr, mpitype])
+    #Transform in x-direction
+    Uc_hat_x[:] = ifft(Uc_hat_xr, axis=0)
+    #communicate in xy-plane
+    commxy.Alltoall([Uc_hat_x, mpitype], [Uc_hat_xr, mpitype])
+    #roll to z axis
+    Uc_hat_z[:, :, :-1] = rollaxis(Uc_hat_xr.reshape((P1, N1, N2, int(N_half/P1))), 0, 3).reshape(
+        (N1, N2, int(N_nyquist)-1))
+    #transform in z-direction
+    u[:]=irfft(Uc_hat_z,axis=2)
+    return u
+
 
 def fftn_mpi(u, fu):
-    # Forward Fourier transform
-    Uc_hatT[:] = rfft2(u, axes=(1, 2))
-    U_mpi[:] = rollaxis(Uc_hatT.reshape(Np, num_processes, Np, N_half), 1)
-    comm.Alltoall([U_mpi, MPI.DOUBLE_COMPLEX], [fu, MPI.DOUBLE_COMPLEX])
-    fu[:] = fft(fu, axis=0)
+    #fft in three directions using MPI and the pencil decomposition
+    Uc_hat_z[:]=rfft(u,axis=2)
+    '''
+    print(shape(Uc_hat_z))
+    print(shape(Uc_hat_z[:,:,:-1]))
+    print(shape(Uc_hat_z[:,:,:-1].reshape((N1,N2,P1,int(N1/2)))))
+    print(shape(rollaxis(Uc_hat_z[:,:,:-1].reshape((N1,N2,P1,int(N1/2))),2)))
+    print(shape(Uc_hat_x))
+    '''
+    #transform to x direction neglecting neglecting k=N/2 (Nyquist)
+    Uc_hat_x[:] = rollaxis(Uc_hat_z[:,:,:-1].reshape((N1,N2,P1,int(N1/2))),2).reshape(Uc_hat_x.shape)
+    #Communicate and do fft in x-direction
+    commxz.Alltoall([Uc_hat_x,mpitype],[Uc_hat_xr,mpitype])
+    Uc_hat_x[:]=fft(Uc_hat_xr,axis=0)
+
+    # Communicate and do fft in y-direction
+    commxy.Alltoall([Uc_hat_x, mpitype], [Uc_hat_xr, mpitype])
+    Uc_hat_y[:] = rollaxis(Uc_hat_xr.reshape((P2,N2,N2,int(N_half/P1))),1).reshape(Uc_hat_y.shape)
+    if rank==0:
+        print(shape(u))
+
+    fu[:]=fft(Uc_hat_y,axis=1)
     return fu
 
 
@@ -242,7 +314,7 @@ while t < T - 1e-8:
         U[i] = ifftn_mpi(U_hat[i], U[i])
 
 
-    if tstep==30:
+    if tstep%30==0:
         u_plot = comm.gather(U, root=0)
         if rank==0:
             U_test = concatenate(u_plot, axis=1)
