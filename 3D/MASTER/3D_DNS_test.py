@@ -39,8 +39,8 @@ xzrank = commxz.Get_rank()
 xyrank = commxy.Get_rank()
 
 
-x1 = slice(xzrank*N1,(xzrank+1)*N1)
-x2 = slice(xyrank*N2,(xyrank+1)*N2)
+x1 = slice(xzrank*N1,(xzrank+1)*N1,1)
+x2 = slice(xyrank*N2,(xyrank+1)*N2,1)
 X = mgrid[x1,x2,:N].astype(float)*L/N
 
 kx = fftfreq(N, 1. / N)
@@ -130,11 +130,12 @@ def fftn_mpi(u, fu):
     # Communicate and do fft in y-direction
     commxy.Alltoall([Uc_hat_x, mpitype], [Uc_hat_xr, mpitype])
     Uc_hat_y[:] = rollaxis(Uc_hat_xr.reshape((P2,N2,N2,int(N_half/P1))),1).reshape(Uc_hat_y.shape)
+    '''
     if rank==0:
         print('shape of u',shape(u))
         print('shape of Uc_hat_y', shape(Uc_hat_y))
         print('shape of fu', shape(fu))
-
+    '''
     fu[:]=fft(Uc_hat_y,axis=1)
     return fu
 
@@ -286,8 +287,30 @@ def spectrum(length,u,v,w):
 U[0] = sin(X[0]) * cos(X[1]) * cos(X[2])
 U[1] = -cos(X[0]) * sin(X[1]) * cos(X[2])
 U[2] = 0
+
+#print('plot before transform')
+#plt.imshow(K2[0,:,:])
+#plt.imshow(U[0][:,:,int(N/2)],cmap='jet')
+#plt.show()
+
+
 for i in range(3):
     U_hat[i] = fftn_mpi(U[i], U_hat[i])
+
+plt.plot(U_hat[0,:,:,0])
+plt.show()
+'''
+for i in range(3):
+    U[i] = ifftn_mpi(U_hat[i], U[i])
+'''
+
+
+#print('plot after transform')
+#plt.imshow(U[0][:,:,int(N/2)],cmap='jet')
+#plt.imshow(K2[0,:,:])
+#plt.show()
+
+'''
 print('IC transformed')
 # Time integral using a Runge Kutta scheme
 t = 0.0
@@ -316,16 +339,18 @@ while t < T - 1e-8:
         U[i] = ifftn_mpi(U_hat[i], U[i])
 
 
-    if tstep%30==0:
+    if tstep%1==0:
         u_plot = comm.gather(U, root=0)
         if rank==0:
-            #U_test = concatenate(u_plot, axis=1)
+            U_test = asarray(u_plot).reshape(3,N,N,N)
+
             if plotting == 'animation':
                 im = plt.imshow(U_test[0][:,:,int(N/2)],cmap='jet', animated=True)
                 ims.append([im])
             if plotting == 'plot':
-                print('shape of gathered U',shape(u_plot))
-                #plt.imshow(U_test[0][:,:,int(N/2)],cmap='jet')
+               # print('shape of gathered U',shape(u_plot))
+               # print('shape of gathered U, concatenated',shape(U_test))
+                plt.imshow(U[0][:,:,int(N/2)],cmap='jet')
                 plt.show()
             if plotting == 'spectrum':
                 spectrum(N, U_test[0], U_test[1], U_test[2])
@@ -344,3 +369,4 @@ if plotting=='animation':
         ani = animation.ArtistAnimation(fig, ims, interval=2, blit=True,
                                         repeat_delay=None)
         ani.save('animationVelocity.gif', writer='imagemagick')
+'''
