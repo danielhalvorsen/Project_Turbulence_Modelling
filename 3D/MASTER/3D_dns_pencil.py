@@ -1,14 +1,16 @@
 from numpy import *
-from numpy.fft import fftfreq, fft, ifft, irfft2, rfft2,fftn,fftshift,rfft,irfft
+from numpy.fft import fftfreq, fft, ifft, irfft2, fftn,fftshift,rfft,irfft
 from mpi4py import MPI
 import matplotlib.pyplot as plt
-from tqdm import tqdm
-import matplotlib.animation as animation
 import time
+from tqdm import tqdm
+
+from mpistuff.mpibase import work_arrays,work_array_dict
 
 
 # U is set to dtype float32
 # Reynoldsnumber determined by nu Re = 1600, nu = 1/1600
+work_array = work_arrays()
 nu = 0.0000000625
 # nu = 0.00000625
 T = 40
@@ -47,8 +49,9 @@ kx = fftfreq(N, 1. / N)
 kz = kx[:(N_half)].copy();
 kz[-1] *= -1
 
-k2 = slice(int(xyrank*N2),int((xyrank+1)*N2))
-k1 = slice(int(xzrank*N1/2),int((xzrank+1)*N1/2))
+k2 = slice(int(xyrank*N2),int((xyrank+1)*N2),1)
+k1 = slice(int(xzrank*N1/2),int(xzrank*N1/2 + N1/2),1)
+#k1 = slice(int(xzrank*N1/2),int((xzrank+1)*N1/2))
 K = array(meshgrid(kx[k2],kx,kx[k1],indexing='ij'),dtype=int)
 
 
@@ -63,10 +66,10 @@ Uc_hat = empty((N, N2, int(N_half/P1)), dtype=complex)
 Uc_hatT = empty((N2, N, int(N_half/P1)), dtype=complex)
 U_mpi = empty((num_processes, N1, N2, N_half), dtype=complex)
 
-Uc_hat_x = empty((N, N2, int(N_half/P1)), dtype=complex)
-Uc_hat_y = empty((N2, N, int(N_half/P1)), dtype=complex)
+Uc_hat_x = empty((N, N2, int(N1/2)), dtype=complex)
+Uc_hat_y = empty((N2, N, int(N1/2)), dtype=complex)
 Uc_hat_z = empty((N1, N2, int(N_nyquist)), dtype=complex)
-Uc_hat_xr = empty((N, N2, int(N_half/P1)), dtype=complex)
+Uc_hat_xr = empty((N, N2, int(N1/2)), dtype=complex)
 
 
 dU = empty((3, N2, N, int(N_half/P1)), dtype=complex)
@@ -92,50 +95,121 @@ def ifftn_mpi2(fu, u):
     u[:] = irfft2(Uc_hatT, axes=(1, 2))
     return u
 
+def transform_Uc_zx(Uc_hat_z, Uc_hat_xr, P1):
+    sz = Uc_hat_z.shape
+    sx = Uc_hat_xr.shape
+    Uc_hat_z[:, :, :-1] = rollaxis(Uc_hat_xr.reshape((P1, sz[0], sz[1], sx[2])), 0, 3).reshape((sz[0], sz[1], sz[2]-1))
+    return Uc_hat_z
+
+def transform_Uc_xy(Uc_hat_x, Uc_hat_y, P):
+    sy = Uc_hat_y.shape
+    sx = Uc_hat_x.shape
+    Uc_hat_x[:] = rollaxis(Uc_hat_y.reshape((sy[0], P, sx[1], sx[2])), 1).reshape(sx)
+    return Uc_hat_x
+
+
 def ifftn_mpi(fu,u):
+    Uc_hat_y = work_array[((N2, N, int(N1/2)),complex, 0, False)]
+    Uc_hat_z = work_array[((N1, N2, N_nyquist), complex, 0, False)]
+
+    Uc_hat_x = work_array[((N, N2, int(N1 / 2)), complex, 0, False)]
+    Uc_hat_xp = work_array[((N, N2, int(N1/2)), complex, 0, False)]
+    xy_plane = work_array[((N, N2), complex, 0, False)]
+    xy_recv = work_array[((N1, N2), complex, 0, False)]
+
+    # Do first owned direction
+    Uc_hat_y = ifft(fu, axis=1)
+    # Transform to x
+    Uc_hat_xp = transform_Uc_xy(Uc_hat_xp, Uc_hat_y, P2)
+
+    ###### In-place
+    ## Communicate in xz-plane and do fft in x-direction
+    # self.comm1.Alltoall(MPI.IN_PLACE, [Uc_hat_xp, self.mpitype])
+    # Uc_hat_xp[:] = ifft(Uc_hat_xp, axis=0, threads=self.threads,
+    # planner_effort=self.planner_effort['ifft'])
+
+    # Uc_hat_x[:] = Uc_hat_xp[:, :, :self.N1[2]//2]
+
+    ## Communicate and transform in xy-plane all but k=N//2
+    # self.comm0.Alltoall(MPI.IN_PLACE, [Uc_hat_x, self.mpitype])
+
+    ####### Not in-place
+    # Communicate in xz-plane and do fft in x-direction
+    Uc_hat_xp2 = work_array[((N, N2, int(N1/2)), complex, 1, False)]
+    commxy.Alltoall([Uc_hat_xp, mpitype], [Uc_hat_xp2, mpitype])
+    Uc_hat_xp = ifft(Uc_hat_xp2, axis=0)
+
+    Uc_hat_x2 = work_array[((N, N2, int(N1 / 2)), complex, 1, False)]
+    Uc_hat_x2[:] = Uc_hat_xp[:, :, :int(N1 / 2)]
+
+    # Communicate and transform in xy-plane all but k=N//2
+    commxz.Alltoall([Uc_hat_x2, mpitype], [Uc_hat_x, mpitype])
+    #########################
+
+    Uc_hat_z[:] = transform_Uc_zx(Uc_hat_z, Uc_hat_x, P1)
+
+    xy_plane[:] = Uc_hat_xp[:, :, -1]
+    commxz.Scatter(xy_plane, xy_recv, root=P1 - 1)
+    Uc_hat_z[:, :, -1] = xy_recv
+
+    # Do ifft for z-direction
+    u = irfft(Uc_hat_z, axis=2)
+
+    '''
     #transform y-direction
     Uc_hat_y[:]= ifft(fu,axis=1)
+
+    plt.imshow((real(Uc_hat_y[:, -1, :])))
+    plt.show()
+
+
     # Roll to x axis
-    Uc_hat_x[:] = rollaxis(Uc_hat_y.reshape((N2, P2, N2, int(N_half/P1))), 1).reshape(Uc_hat_x.shape)
+    Uc_hat_x[:] = rollaxis(Uc_hat_y.reshape((N2, P2, N2, int(N1/2))), 1).reshape(Uc_hat_x.shape)
+
     #Communicate in xz plane
     commxz.Alltoall([Uc_hat_x, mpitype], [Uc_hat_xr, mpitype])
+
     #Transform in x-direction
     Uc_hat_x[:] = ifft(Uc_hat_xr, axis=0)
+
+
     #communicate in xy-plane
     commxy.Alltoall([Uc_hat_x, mpitype], [Uc_hat_xr, mpitype])
     #roll to z axis
     Uc_hat_z[:, :, :-1] = rollaxis(Uc_hat_xr.reshape((P1, N1, N2, int(N_half/P1))), 0, 3).reshape(
         (N1, N2, int(N_nyquist)-1))
+
+
+
     #transform in z-direction
     u[:]=irfft(Uc_hat_z,axis=2)
+    '''
     return u
 
 
 def fftn_mpi(u, fu):
-    #fft in three directions using MPI and the pencil decomposition
+    # FFT in three directions using MPI and the pencil decomposition
     Uc_hat_z[:]=rfft(u,axis=2)
-    '''
-    print(shape(Uc_hat_z))
-    print(shape(Uc_hat_z[:,:,:-1]))
-    print(shape(Uc_hat_z[:,:,:-1].reshape((N1,N2,P1,int(N1/2)))))
-    print(shape(rollaxis(Uc_hat_z[:,:,:-1].reshape((N1,N2,P1,int(N1/2))),2)))
-    print(shape(Uc_hat_x))
-    '''
-    #transform to x direction neglecting neglecting k=N/2 (Nyquist)
+
+
+    # Transform to x direction neglecting neglecting k=N/2 (Nyquist)
     Uc_hat_x[:] = rollaxis(Uc_hat_z[:,:,:-1].reshape((N1,N2,P1,int(N1/2))),2).reshape(Uc_hat_x.shape)
-    #Communicate and do fft in x-direction
+
+
+
+
+    # Communicate and do FFT in x-direction
     commxz.Alltoall([Uc_hat_x,mpitype],[Uc_hat_xr,mpitype])
     Uc_hat_x[:]=fft(Uc_hat_xr,axis=0)
+
+
 
     # Communicate and do fft in y-direction
     commxy.Alltoall([Uc_hat_x, mpitype], [Uc_hat_xr, mpitype])
     Uc_hat_y[:] = rollaxis(Uc_hat_xr.reshape((P2,N2,N2,int(N_half/P1))),1).reshape(Uc_hat_y.shape)
-    '''
-    if rank==0:
-        print('shape of u',shape(u))
-        print('shape of Uc_hat_y', shape(Uc_hat_y))
-        print('shape of fu', shape(fu))
-    '''
+
+
+
     fu[:]=fft(Uc_hat_y,axis=1)
     return fu
 
@@ -168,8 +242,6 @@ def computeRHS(dU, rk):
     dU -= P_hat * K
     dU -= nu * K2 * U_hat
     return dU
-
-
 
 
 def spectrum(length,u,v,w):
@@ -293,80 +365,81 @@ U[2] = 0
 #plt.imshow(U[0][:,:,int(N/2)],cmap='jet')
 #plt.show()
 
-
-for i in range(3):
-    U_hat[i] = fftn_mpi(U[i], U_hat[i])
-
-plt.plot(U_hat[0,:,:,0])
-plt.show()
-'''
-for i in range(3):
-    U[i] = ifftn_mpi(U_hat[i], U[i])
-'''
+if __name__ == '__main__':
 
 
-#print('plot after transform')
-#plt.imshow(U[0][:,:,int(N/2)],cmap='jet')
-#plt.imshow(K2[0,:,:])
-#plt.show()
-
-'''
-print('IC transformed')
-# Time integral using a Runge Kutta scheme
-t = 0.0
-tstep = 0
-mid_idx = int(N / 2)
-pbar = tqdm(total=int(T / dt))
-plotting = 'plot'
-fig = plt.figure()
-# ims is a list of lists, each row is a list of artists to draw in the
-# current frame; here we are just animating one artist, the image, in
-# each frame
-ims = []
-
-while t < T - 1e-8:
-
-    t += dt;
-    U_hat1[:] = U_hat0[:] = U_hat
-    for rk in range(4):
-        # Run RK4 temporal integral method
-        dU = computeRHS(dU, rk)
-        if rk < 3: U_hat[:] = U_hat0 + b[rk] * dt * dU
-        U_hat1[:] += a[rk] * dt * dU
-    U_hat[:] = U_hat1[:]
     for i in range(3):
-        # Inverse Fourier transform after RK4 algorithm
-        U[i] = ifftn_mpi(U_hat[i], U[i])
+        U_hat[i] = fftn_mpi(U[i], U_hat[i])
+
+    # Time integral using a Runge Kutta scheme
+    t = 0.0
+    tstep = 0
+    mid_idx = int(N / 2)
+    pbar = tqdm(total=int(T / dt))
+    plotting = 'plot'
+    fig = plt.figure()
+    # ims is a list of lists, each row is a list of artists to draw in the
+    # current frame; here we are just animating one artist, the image, in
+    # each frame
+    ims = []
+    
+    while t < T - 1e-8:
+    
+        t += dt;
+        U_hat1[:] = U_hat0[:] = U_hat
+        for rk in range(4):
+            # Run RK4 temporal integral method
+            dU = computeRHS(dU, rk)
+            if rk < 3: U_hat[:] = U_hat0 + b[rk] * dt * dU
+            U_hat1[:] += a[rk] * dt * dU
+        U_hat[:] = U_hat1[:]
+        for i in range(3):
+            # Inverse Fourier transform after RK4 algorithm
+            U[i] = ifftn_mpi(U_hat[i], U[i])
+    
+    
+        if tstep%50==0:
+            test1 = commxz.gather(U,root=0)
+            test1 = asarray(test1).reshape(3,int(N/2),N,N)
+
+            test2 = commxy.gather(U,root=0)
+            test2 = asarray(test2).reshape(3,int(N/2),N,N)
+
+            #test3 = concatenate((test1,test2),axis=0)
+
+            print(shape(test1))
+            print(shape(test2))
+           # print(shape(test3))
+            #u_plot = comm.gather(U, root=0)
 
 
-    if tstep%1==0:
-        u_plot = comm.gather(U, root=0)
+            '''
+            if rank==0:
+                u_plot = asarray(u_plot).reshape(3,N,N,N)
+
+                if plotting == 'animation':
+                    im = plt.imshow(U_test[0][:,:,int(N/2)],cmap='jet', animated=True)
+                    ims.append([im])
+                if plotting == 'plot':
+                   # print('shape of gathered U',shape(u_plot))
+                   # print('shape of gathered U, concatenated',shape(U_test))
+                    plt.imshow(u_plot[0][:,:,-1],cmap='jet')
+                    plt.show()
+                    #plt.pause(0.05)
+                if plotting == 'spectrum':
+                    spectrum(N, U_test[0], U_test[1], U_test[2])
+            '''
+        tstep += 1
+        pbar.update(1)
+    
+    k = comm.reduce(0.5 * sum(U * U) * (1. / N) ** 3)
+    # if rank == 0:
+    #   assert round(k - 0.124953117517, 7) == 0
+    pbar.close()
+    
+    
+    if plotting=='animation':
         if rank==0:
-            U_test = asarray(u_plot).reshape(3,N,N,N)
-
-            if plotting == 'animation':
-                im = plt.imshow(U_test[0][:,:,int(N/2)],cmap='jet', animated=True)
-                ims.append([im])
-            if plotting == 'plot':
-               # print('shape of gathered U',shape(u_plot))
-               # print('shape of gathered U, concatenated',shape(U_test))
-                plt.imshow(U[0][:,:,int(N/2)],cmap='jet')
-                plt.show()
-            if plotting == 'spectrum':
-                spectrum(N, U_test[0], U_test[1], U_test[2])
-
-    tstep += 1
-    pbar.update(1)
-
-k = comm.reduce(0.5 * sum(U * U) * (1. / N) ** 3)
-# if rank == 0:
-#   assert round(k - 0.124953117517, 7) == 0
-pbar.close()
-
-
-if plotting=='animation':
-    if rank==0:
-        ani = animation.ArtistAnimation(fig, ims, interval=2, blit=True,
-                                        repeat_delay=None)
-        ani.save('animationVelocity.gif', writer='imagemagick')
-'''
+            ani = animation.ArtistAnimation(fig, ims, interval=2, blit=True,
+                                            repeat_delay=None)
+            ani.save('animationVelocity.gif', writer='imagemagick')
