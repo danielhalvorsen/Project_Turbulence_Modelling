@@ -16,7 +16,7 @@ nu = 0.0000000625
 T = 40
 dt = 0.01
 L = 2*pi
-N = int(2 ** 4)
+N = int(2 ** 6)
 N_half = int(N / 2)
 N_nyquist=int(N/2+1)
 P1 = 1
@@ -353,8 +353,25 @@ def spectrum(length,u,v,w):
     savetxt(Figs_Path + Fig_file_name + '.dat', dataout)
     fig.savefig(Figs_Path + Fig_file_name + '.pdf')
     plt.show()
-def reshapeGathered(U,u_plot):
-    # u_plot has shape (N_process,3,N/N1,N/N2,N)
+
+def reshapeGathered(u_gathered,N,N1,N2,P1,P2,num_processes):
+    if num_processes == 1:
+        u_reshaped = reshape(u_gathered, (3, N, N, N))
+    else:
+        store_vector = empty(shape=(P1,P2)).tolist()
+        #row_Vectors = empty(shape=(P1)).tolist()
+        counter=0
+        for j in range(P2):
+            for i in range(P1):
+
+                store_vector[i][j]=u_gathered[counter]
+                counter +=1
+
+        first_concat = concatenate(store_vector,axis=2)
+        second_concat = concatenate(first_concat,axis=2)
+        u_reshaped = second_concat
+    # new vector = concatenate((vec1,vec2,vec3,---),axis=..)
+    # u_gathered has shape (N_process,3,N/N1,N/N2,N)
     # P1 = 2
     # P2 = num_process/P1
     # N1 = N/P1 = N/2 = 8
@@ -362,8 +379,6 @@ def reshapeGathered(U,u_plot):
     # we want shape (3,N,N,N)
     # need to loop over number of processes and concatenate in x-direction
     # P1 times, and in y-direction P2
-
-    u_reshaped = reshape(u_plot,(3,16,16,16))
     return u_reshaped
 
 
@@ -414,7 +429,7 @@ if __name__ == '__main__':
             u_gathered = comm.gather(U, root=0)
 
             if rank==0:
-                u_reshaped = reshapeGathered(u_gathered)
+                u_reshaped = reshapeGathered(u_gathered,N,N1,N2,P1,P2,num_processes)
 
 
                 if plotting == 'animation':
