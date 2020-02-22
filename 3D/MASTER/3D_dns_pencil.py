@@ -353,6 +353,18 @@ def spectrum(length,u,v,w):
     savetxt(Figs_Path + Fig_file_name + '.dat', dataout)
     fig.savefig(Figs_Path + Fig_file_name + '.pdf')
     plt.show()
+def reshapeGathered(U,u_plot):
+    # u_plot has shape (N_process,3,N/N1,N/N2,N)
+    # P1 = 2
+    # P2 = num_process/P1
+    # N1 = N/P1 = N/2 = 8
+    # N2 = N/P2 = 2*N/num_process = 8
+    # we want shape (3,N,N,N)
+    # need to loop over number of processes and concatenate in x-direction
+    # P1 times, and in y-direction P2
+
+    u_reshaped = reshape(u_plot,(3,16,16,16))
+    return u_reshaped
 
 
 # initial condition and transformation to Fourier space
@@ -399,23 +411,11 @@ if __name__ == '__main__':
     
     
         if tstep%50==0:
-            test1 = commxz.gather(U,root=0)
-            test1 = asarray(test1).reshape(3,int(N/2),N,N)
+            u_gathered = comm.gather(U, root=0)
 
-            test2 = commxy.gather(U,root=0)
-            test2 = asarray(test2).reshape(3,int(N/2),N,N)
-
-            #test3 = concatenate((test1,test2),axis=0)
-
-            print(shape(test1))
-            print(shape(test2))
-           # print(shape(test3))
-            #u_plot = comm.gather(U, root=0)
-
-
-            '''
             if rank==0:
-                u_plot = asarray(u_plot).reshape(3,N,N,N)
+                u_reshaped = reshapeGathered(u_gathered)
+
 
                 if plotting == 'animation':
                     im = plt.imshow(U_test[0][:,:,int(N/2)],cmap='jet', animated=True)
@@ -423,12 +423,12 @@ if __name__ == '__main__':
                 if plotting == 'plot':
                    # print('shape of gathered U',shape(u_plot))
                    # print('shape of gathered U, concatenated',shape(U_test))
-                    plt.imshow(u_plot[0][:,:,-1],cmap='jet')
-                    plt.show()
+                    plt.imshow(u_reshaped[0][:,:,-1],cmap='jet')
+                    plt.pause(0.05)
                     #plt.pause(0.05)
                 if plotting == 'spectrum':
                     spectrum(N, U_test[0], U_test[1], U_test[2])
-            '''
+
         tstep += 1
         pbar.update(1)
     
