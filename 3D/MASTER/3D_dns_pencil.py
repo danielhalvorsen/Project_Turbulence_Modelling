@@ -15,14 +15,14 @@ work_array = work_arrays()
 ###############################################
 ###############################################
 # USER CHOICE ##
-nu = 0.0000000625
-Tend = 40
+nu = 0.000625
+Tend = 20
 dt = 0.01
 N_tsteps = ceil(Tend/dt)
-bool_percentile = 0.01
+bool_percentile = 0.05
 plotting = 'plot'
 L = 2*pi
-N = int(2 ** 4)
+N = int(2 ** 5)
 ###############################################
 ###############################################
 
@@ -128,17 +128,6 @@ def ifftn_mpi(fu,u):
     # Transform to x
     Uc_hat_xp = transform_Uc_xy(Uc_hat_xp, Uc_hat_y, P2)
 
-    ###### In-place
-    ## Communicate in xz-plane and do fft in x-direction
-    # self.comm1.Alltoall(MPI.IN_PLACE, [Uc_hat_xp, self.mpitype])
-    # Uc_hat_xp[:] = ifft(Uc_hat_xp, axis=0, threads=self.threads,
-    # planner_effort=self.planner_effort['ifft'])
-
-    # Uc_hat_x[:] = Uc_hat_xp[:, :, :self.N1[2]//2]
-
-    ## Communicate and transform in xy-plane all but k=N//2
-    # self.comm0.Alltoall(MPI.IN_PLACE, [Uc_hat_x, self.mpitype])
-
     ####### Not in-place
     # Communicate in xz-plane and do fft in x-direction
     Uc_hat_xp2 = work_array[((N, N2, int(N1/2)), complex, 1, False)]
@@ -160,36 +149,6 @@ def ifftn_mpi(fu,u):
 
     # Do ifft for z-direction
     u = irfft(Uc_hat_z, axis=2)
-
-    '''
-    #transform y-direction
-    Uc_hat_y[:]= ifft(fu,axis=1)
-
-    plt.imshow((real(Uc_hat_y[:, -1, :])))
-    plt.show()
-
-
-    # Roll to x axis
-    Uc_hat_x[:] = rollaxis(Uc_hat_y.reshape((N2, P2, N2, int(N1/2))), 1).reshape(Uc_hat_x.shape)
-
-    #Communicate in xz plane
-    commxz.Alltoall([Uc_hat_x, mpitype], [Uc_hat_xr, mpitype])
-
-    #Transform in x-direction
-    Uc_hat_x[:] = ifft(Uc_hat_xr, axis=0)
-
-
-    #communicate in xy-plane
-    commxy.Alltoall([Uc_hat_x, mpitype], [Uc_hat_xr, mpitype])
-    #roll to z axis
-    Uc_hat_z[:, :, :-1] = rollaxis(Uc_hat_xr.reshape((P1, N1, N2, int(N_half/P1))), 0, 3).reshape(
-        (N1, N2, int(N_nyquist)-1))
-
-
-
-    #transform in z-direction
-    u[:]=irfft(Uc_hat_z,axis=2)
-    '''
     return u
 
 
@@ -197,24 +156,16 @@ def fftn_mpi(u, fu):
     # FFT in three directions using MPI and the pencil decomposition
     Uc_hat_z[:]=rfft(u,axis=2)
 
-
     # Transform to x direction neglecting neglecting k=N/2 (Nyquist)
     Uc_hat_x[:] = rollaxis(Uc_hat_z[:,:,:-1].reshape((N1,N2,P1,int(N1/2))),2).reshape(Uc_hat_x.shape)
-
-
-
 
     # Communicate and do FFT in x-direction
     commxz.Alltoall([Uc_hat_x,mpitype],[Uc_hat_xr,mpitype])
     Uc_hat_x[:]=fft(Uc_hat_xr,axis=0)
 
-
-
     # Communicate and do fft in y-direction
     commxy.Alltoall([Uc_hat_x, mpitype], [Uc_hat_xr, mpitype])
     Uc_hat_y[:] = rollaxis(Uc_hat_xr.reshape((P2,N2,N2,int(N_half/P1))),1).reshape(Uc_hat_y.shape)
-
-
 
     fu[:]=fft(Uc_hat_y,axis=1)
     return fu
@@ -222,7 +173,6 @@ def fftn_mpi(u, fu):
 
 def Cross_slow(a, b, c):
     # 3D cross product
-
     c[0] = fftn_mpi(a[1] * b[2] - a[2] * b[1], c[0])
     c[1] = fftn_mpi(a[2] * b[0] - a[0] * b[2], c[1])
     c[2] = fftn_mpi(a[0] * b[1] - a[1] * b[0], c[2])
@@ -261,14 +211,44 @@ def Curl(a, c):
     c[0] = ifftn_mpi(1j * (K[1] * a[2] - K[2] * a[1]), c[0])
     return c
 
+@jit(nopython=True,fastmath=True)
+def cross2a(c, a, b):
+    """ c = 1j*(a x b)"""
+    for i in range(a.shape[1]):
+        for j in range(a.shape[2]):
+            for k in range(a.shape[3]):
+                a0 = a[0, i, j, k]
+                a1 = a[1, i, j, k]
+                a2 = a[2, i, j, k]
+                b0 = b[0, i, j, k]
+                b1 = b[1, i, j, k]
+                b2 = b[2, i, j, k]
+                c[0, i, j, k] = -(a1*b2.imag - a2*b1.imag) + 1j*(a1*b2.real - a2*b1.real)
+                c[1, i, j, k] = -(a2*b0.imag - a0*b2.imag) + 1j*(a2*b0.real - a0*b2.real)
+                c[2, i, j, k] = -(a0*b1.imag - a1*b0.imag) + 1j*(a0*b1.real - a1*b0.real)
+    return c
+
+def compute_curl(c, a, work, K):
+    """c = curl(a) = F_inv(F(curl(a))) = F_inv(1j*K x a)"""
+    curl_hat = work[(a, 0, False)]
+    curl_hat = cross2a(curl_hat, K, a)
+    c[0] = ifftn_mpi(curl_hat[0], c[0])
+    c[1] = ifftn_mpi(curl_hat[1], c[1])
+    c[2] = ifftn_mpi(curl_hat[2], c[2])
+    return c
 
 def computeRHS(dU, rk):
     # Compute residual of time integral as specified in pseudo spectral Galerkin method
     if rk > 0:
         for i in range(3):
             U[i] = ifftn_mpi(U_hat[i], U[i])
-    curl[:] = Curl(U_hat, curl)
-    dU = Cross_T(dU,U, curl,work_array)
+
+    #curl[:] = Curl(U_hat, curl)
+    curl[:] = compute_curl(curl, U_hat, work_array, K)
+    dU = Cross_T(dU, U, curl, work_array)
+    #dU = Cross_slow(U, curl, dU)
+
+
     dU *= dealias
     P_hat[:] = sum(dU * K_over_K2, 0, out=P_hat)
     dU -= P_hat * K
@@ -388,7 +368,7 @@ def spectrum(length,u,v,w):
 
 
 def reshape_loop(P1,P2,store_vector,u_gathered):
-    #TODO Optimize using Cython (or numba? )
+    #TODO Optimize using Cython
     counter = 0
     for j in range(shape(store_vector)[1]):
         for i in range(shape(store_vector)[0]):
@@ -467,12 +447,12 @@ if __name__ == '__main__':
             U[i] = ifftn_mpi(U_hat[i], U[i])
     
     
-        if tstep%50==0:
+        if tstep%plot_step==0:
             u_gathered = comm.gather(U, root=0)
             if rank==0:
                 u_reshaped = reshapeGathered(u_gathered,N,N1,N2,P1,P2,num_processes,method='concatenate')
                 if plotting == 'animation':
-                    im = plt.imshow(u_reshaped[0][:,:,mid_idx],cmap='jet', animated=True)
+                    im = plt.imshow(u_reshaped[0][:,:,-1],cmap='jet', animated=True)
                     ims.append([im])
                 if plotting == 'plot':
                     plt.imshow(u_reshaped[0][:,:,-1],cmap='jet')
@@ -487,9 +467,9 @@ if __name__ == '__main__':
                     print('next iteration')
 
         tstep += 1
-       # if rank ==0:
+        #if rank ==0:
             #progressfile.write("tstep= %d\r\n" % (tstep),flush=True)
-           # print('tstep= %d\r\n'%(tstep),flush=True)
+            #print('tstep= %d\r\n'%(tstep),flush=True)
         try:
             pbar.update(1)
         except:
