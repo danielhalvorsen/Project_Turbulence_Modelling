@@ -12,15 +12,16 @@ except ImportError:
 from mpistuff.mpibase import work_arrays
 work_array = work_arrays()
 
+#TODO Make nice comments on all the functions and different parts of the script
 ###############################################
 ###############################################
 # USER CHOICE ##
 nu = 0.000625
-Tend = 20
+Tend = 10
 dt = 0.01
 N_tsteps = ceil(Tend/dt)
-bool_percentile = 0.05
-plotting = 'plot'
+bool_percentile = 0.10
+plotting = 'noFigure'
 L = 2*pi
 N = int(2 ** 5)
 ###############################################
@@ -465,6 +466,8 @@ if __name__ == '__main__':
                     plt.savefig('images/turb_t_'+str(int(tstep)))
                 if plotting=='noFigure':
                     print('next iteration')
+                if plotting =='saveNumpy':
+                    save('vel_files/velocity_'+str(tstep)+'.npy',u_reshaped)
 
         tstep += 1
         #if rank ==0:
