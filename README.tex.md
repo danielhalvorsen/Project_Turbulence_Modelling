@@ -14,7 +14,7 @@
 <p align="center">
 <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/spectrumgif_512_1600_70.gif" width="350"/>
 </p>
-Computed energy spectrum $E(k)$ for the time range $t\in$ [0,42].
+Computed energy spectrum E(k) for the time range t in [0,42].
 
 <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/TG3D_64.gif" width="425"/> <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/TG3D_128.gif" width="425"/>
 3D-isotropic turbulence using Re=1.6M. Taylor Green Vortex. Left: N=64, Right: N=128.
