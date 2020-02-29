@@ -17,11 +17,11 @@ work_array = work_arrays()
 ###############################################
 # USER CHOICE ##
 nu = 0.000625
-Tend = 10
+Tend = 20
 dt = 0.01
 N_tsteps = ceil(Tend/dt)
-bool_percentile = 0.10
-plotting = 'noFigure'
+bool_percentile = 0.5
+plotting = 'saveNumpy'
 L = 2*pi
 N = int(2 ** 5)
 ###############################################
