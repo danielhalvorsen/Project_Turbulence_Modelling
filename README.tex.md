@@ -11,10 +11,10 @@
 <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/512_70_xy.gif" width="280"/> <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/512_70_xz.gif" width="280"/><img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/512_70_yz.gif" width="280"/>
 3D-isotropic turbulence using Re=1600. Taylor Green Vortex. N=512. The planes presented are respectively the xy-, xz- and yz-plane with last accessible index in corresponding axis. The code ran on the Idun cluster using 128 cores for 24 hours. 
 
-
-<img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/spectrumgif_512_1600_70.gif" width="725"/>
-Computed energy spectrum $E(k)$ for the time range $t/in [0,42].
-
+<p align="center">
+<img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/spectrumgif_512_1600_70.gif" width="425"/>
+Computed energy spectrum $E(k)$ for the time range $t/in$ [0,42].
+</p>
 
 <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/TG3D_64.gif" width="425"/> <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/TG3D_128.gif" width="425"/>
 3D-isotropic turbulence using Re=1.6M. Taylor Green Vortex. Left: N=64, Right: N=128.
