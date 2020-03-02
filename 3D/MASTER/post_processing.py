@@ -6,6 +6,12 @@ import time
 from numpy import sqrt, zeros, conj, pi, arange, ones, convolve
 from matplotlib.ticker import ScalarFormatter
 from numba import jit
+from mpistuff.mpibase import work_arrays
+work_array = work_arrays()
+
+
+
+
 
 def movingaverage(interval, window_size):
     window = ones(int(window_size)) / float(window_size)
@@ -21,7 +27,57 @@ def kloop(nx,ny,nz,tke_spectrum,tkeh):
                 tke_spectrum[k] += tkeh[kx, ky, kz]
     return tke_spectrum
 
-def compute_tke_spectrum(u, v, w, N, smooth):
+@jit(nopython=True)
+def dissipationLoop(N,K2,uh,vh,wh,nu):
+    sum = 0
+    for i in range(np.shape(K2)[0]):
+        for j in range(np.shape(K2)[1]):
+            for k in range(np.shape(K2)[2]):
+                sum += (K2[i,j,k]*((uh[i,j,k]+vh[i,j,k])+wh[i,j,k])/3)
+
+
+    return np.real(2*nu*sum)
+
+
+
+@jit(nopython=True,fastmath=True)
+def cross2a(c, a, b):
+    """ c = 1j*(a x b)"""
+    for i in range(a.shape[1]):
+        for j in range(a.shape[2]):
+            for k in range(a.shape[3]):
+                a0 = a[0, i, j, k]
+                a1 = a[1, i, j, k]
+                a2 = a[2, i, j, k]
+                b0 = b[0, i, j, k]
+                b1 = b[1, i, j, k]
+                b2 = b[2, i, j, k]
+                c[0, i, j, k] = -(a1*b2.imag - a2*b1.imag) + 1j*(a1*b2.real - a2*b1.real)
+                c[1, i, j, k] = -(a2*b0.imag - a0*b2.imag) + 1j*(a2*b0.real - a0*b2.real)
+                c[2, i, j, k] = -(a0*b1.imag - a1*b0.imag) + 1j*(a0*b1.real - a1*b0.real)
+
+    return c
+@jit(nopython=True)
+def integralDissipation(curl_hat):
+    dissipation = np.sum(np.abs(curl_hat) ** 2)
+    return dissipation
+
+def dissipationComputation(a, work, K,nu):
+    """c = curl(a) = F_inv(F(curl(a))) = F_inv(1j*K x a)"""
+    curl_hat = work[(a, 0, False)]
+    curl_hat = cross2a(curl_hat, K, a)
+    #c[0] = ifft(curl_hat[0])
+    #c[1] = ifft(curl_hat[1])
+    #c[2] = ifft(curl_hat[2])
+    dissipation = integralDissipation(curl_hat)
+    return dissipation*nu
+
+
+
+
+
+
+def compute_tke_spectrum(u, v, w, length, smooth):
     """
     Given a velocity field u, v, w, this function computes the kinetic energy
     spectrum of that velocity field in spectral space. This procedure consists of the
@@ -50,7 +106,7 @@ def compute_tke_spectrum(u, v, w, N, smooth):
     smooth: boolean
       A boolean to smooth the computed spectrum for nice visualization.
     """
-    lx,ly,lz = N,N,N
+    lx,ly,lz = length,length,length
     nx = len(u[:, 0, 0])
     ny = len(v[0, :, 0])
     nz = len(w[0, 0, :])
@@ -81,29 +137,9 @@ def compute_tke_spectrum(u, v, w, N, smooth):
     wave_numbers = knorm * arange(0, n)
 
     tke_spectrum = zeros(len(wave_numbers))
-
     tke_spectrum = kloop(nx,ny,nz,tke_spectrum,tkeh)
-
-    # for kx in range(nx):
-    #     rkx = kx
-    #     if kx > kxmax:
-    #         rkx = rkx - nx
-    #     for ky in range(ny):
-    #         rky = ky
-    #         if ky > kymax:
-    #             rky = rky - ny
-    #         for kz in range(nz):
-    #             rkz = kz
-    #             if kz > kzmax:
-    #                 rkz = rkz - nz
-    #             rk = sqrt(rkx * rkx + rky * rky + rkz * rkz)
-    #             k = int(np.round(rk))
-    #             tke_spectrum[k] = tke_spectrum[k] + tkeh[kx, ky, kz]
-
     tke_spectrum = tke_spectrum / knorm
 
-    #  tke_spectrum = tke_spectrum[1:]
-    #  wave_numbers = wave_numbers[1:]
     if smooth:
         tkespecsmooth = movingaverage(tke_spectrum, 5)  # smooth the spectrum
         tkespecsmooth[0:4] = tke_spectrum[0:4]  # get the first 4 values from the original data
@@ -233,41 +269,73 @@ fig, ax = plt.subplots()
 
 ims = []
 step=0
-xticks = np.logspace(0,3,5)
-yticks = np.logspace(1,-13,7)
+length=2*np.pi
+xticks = np.logspace(0,2,7)
+yticks = np.logspace(1,-13,5)
 N=512
+nu = 1/1600
 amount = 32
 name = 'vel_files/velocity_'+str(step)+'.npy'
 plot = 'spectrum2'
+counter =0
+dissipationArray = np.zeros((32))
+timearray = np.arange(0,4460,140)/100
 
-#TODO load in one and one file from /vel_files, read [0][:,:,-1] and add to animation. Also make spectrum plots and viscous diffusion plots
-for i in range(amount):
-    name = 'vel_files/velocity_' + str(step) + '.npy'
-    vec = np.load(name)
-    print('Loaded nr: '+str(step),flush=True)
-    if plot == 'plotVelocity':
-        im = plt.imshow(vec[0][:,:,-1],cmap='jet', animated=True)
-        ims.append([im])
-    if plot == 'spectrum1':
-        fig = spectrum(N,vec[0],vec[1],vec[2])
-        plt.savefig('spectrum_plots/spectrum_'+str(step))
-        #im = plt.show()
-        #ims.append([im])
-    if plot == 'spectrum2':
-        nyquist,k,tke = compute_tke_spectrum(vec[0],vec[1],vec[2],N,True)
-        plt.loglog(k,tke,'k-')
-        plt.xticks(xticks)
-        plt.yticks(yticks)
-        plt.xlabel('Wave number, $k$')
-        plt.ylabel('Turbulent kinetic energy, $E(k)$')
-        plt.savefig('spectrum_plots/spectrum_'+str(step))
-        plt.clf()
+runLoop = True
 
-    step += 140
-    print('Finished appending nr: '+str(step),flush=True)
+if runLoop == True:
+    kx = fftfreq(N, 1. / N)
+    K = np.array(np.meshgrid(kx, kx, kx, indexing='ij'), dtype=int)
+    K2 = np.sum(K * K, 0, dtype=int)
+    #TODO load in one and one file from /vel_files, read [0][:,:,-1] and add to animation. Also make spectrum plots and viscous diffusion plots
+    for i in range(amount):
+        name = 'vel_files/velocity_' + str(step) + '.npy'
+        vec = np.load(name)
+        print('Loaded nr: '+str(step),flush=True)
+        if plot == 'plotVelocity':
+            im = plt.imshow(vec[0][:,:,-1],cmap='jet', animated=True)
+            ims.append([im])
+        if plot == 'spectrum1':
+            fig = spectrum(N,vec[0],vec[1],vec[2])
+            plt.savefig('spectrum_plots/spectrum_'+str(step))
+            #im = plt.show()
+            #ims.append([im])
+        if plot == 'spectrum2':
+            nyquist,k,tke = compute_tke_spectrum(vec[0],vec[1],vec[2],length,True)
+            plt.loglog(k,tke,'k-')
+            plt.loglog(k,(k**(-5/3)),'r--')
+            plt.xticks(xticks)
+            plt.yticks(yticks)
+            plt.xlabel('Wave number, $k$')
+            plt.ylabel('Turbulent kinetic energy, $E(k)$')
+            plt.legend(['$E(k)$,  t= %.2f'%(step/100), '$Ck^{-5/3}$'],loc='upper right')
+            plt.savefig('spectrum_plots/spectrum_'+str(step))
+            plt.clf()
+        if plot == 'dissipation':
+            Nt = N**3
+            uh = fftn(vec[0])/Nt
+            vh = fftn(vec[1])/Nt
+            wh = fftn(vec[2])/Nt
+            u_hat = np.array([uh,vh,wh])
+            dissipationArray[counter]= dissipationComputation(u_hat,work_array,K,nu)
+            counter +=1
 
-'''
-if plot =='spectrum2':
-    ani = animation.ArtistAnimation(fig, ims, interval=2, blit=False,repeat_delay=None)
-    ani.save('spectrum.gif', writer='imagemagick')
-'''
+
+
+        step += 140
+        print('Finished appending nr: '+str(step),flush=True)
+    np.save('dissipation.npy',dissipationArray)
+    plt.plot(timearray,dissipationArray)
+
+    plt.savefig('testfig')
+    '''
+    if plot =='spectrum2':
+        ani = animation.ArtistAnimation(fig, ims, interval=2, blit=False,repeat_delay=None)
+        ani.save('spectrum.gif', writer='imagemagick')
+    '''
+else:
+    dissipation = np.load('dissipation.npy')
+    plt.plot(timearray,dissipation,'k-')
+    plt.xlabel('Time (s)')
+    plt.ylabel(r'Enstrophy, $\epsilon$  ($\frac{m^2}{s^2}$)')
+    plt.savefig('dissipation')
