@@ -12,9 +12,9 @@
 3D-isotropic turbulence using Re=1600. Taylor Green Vortex. N=512. The planes presented are respectively the xy-, xz- and yz-plane with last accessible index in corresponding axis. The code ran on the Idun cluster using 128 cores for 24 hours. 
 
 <p align="center">
-<img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/spectrumNice_kolmog.gif" width="350"/>
+<img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/spectrum512_43.gif" width="350"/><img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/dissipation.png" width="350"/>
 </p>
-Computed energy spectrum E(k) for the time range t in [0,42].
+Computed energy spectrum E(k) for the time range t in [0,42]. Right image shows enstrophy distribution with a peak dissipation at t=9 seconds.
 
 <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/TG3D_64.gif" width="425"/> <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/TG3D_128.gif" width="425"/>
 3D-isotropic turbulence using Re=1.6M. Taylor Green Vortex. Left: N=64, Right: N=128.
