@@ -17,13 +17,25 @@ work_array = work_arrays()
 ###############################################
 # USER CHOICE ##
 nu = 0.000625
-Tend = 20
+Tend = 100
 dt = 0.01
 N_tsteps = ceil(Tend/dt)
-bool_percentile = 0.5
+bool_percentile = 0.01
 plotting = 'saveNumpy'
+IC = 'isotropic'
 L = 2*pi
-N = int(2 ** 5)
+eta = 2*pi*((1/nu)**(-3/4))
+N = int(2 ** 9)
+N_three = N**3
+
+xticks = logspace(-1,0,4)
+yticks = logspace(1,-1,4)
+
+kf = 3 #Highest wave number that is forced.
+Re_lam = 128
+k0 = 1.7 #Kolmogorov constant
+kd = 50 #Dissipative length scale, inverse of kolmogorov length scale \eta.
+target = Re_lam*(nu*kd)**2/(sqrt(20./3.)) # Energy of flow with given parameters of Re_lam, kd and nu.
 ###############################################
 ###############################################
 
@@ -54,6 +66,8 @@ xyrank = commxy.Get_rank()
 x1 = slice(xzrank*N1,(xzrank+1)*N1,1)
 x2 = slice(xyrank*N2,(xyrank+1)*N2,1)
 X = mgrid[x1,x2,:N].astype(float32)*L/N
+randomNr = random.rand(N1,N2,N)
+
 # Declaration of wave numbers (Fourier space)
 kx = fftfreq(N, 1. / N)
 kz = kx[:(N_half)].copy();
@@ -61,6 +75,12 @@ kz[-1] *= -1
 k2 = slice(int(xyrank*N2),int((xyrank+1)*N2),1)
 k1 = slice(int(xzrank*N1/2),int(xzrank*N1/2 + N1/2),1)
 K = array(meshgrid(kx[k2],kx,kx[k1],indexing='ij'),dtype=int)
+
+kx_single = fftfreq(N, 1. / N)
+K_single = array(meshgrid(kx,kx, kz, indexing='ij'), dtype=int)
+K2_single = sum(K_single * K_single, 0, dtype=int)
+eps = 0
+kinE = 1
 
 # Preallocate arrays, decomposed using a 2D-pencil approach
 U = empty((3, N1, N2, N), dtype=float32)
@@ -86,19 +106,12 @@ kmax_dealias = 2. / 3. * (N_half)
 dealias = array(
     (abs(K[0]) < kmax_dealias) * (abs(K[1]) < kmax_dealias) * (abs(K[2]) < kmax_dealias),
     dtype=bool)
+k2_mask = where(K2 <= kf**2, 1, 0)
 
 # Runge Kutta constants
 a = [1. / 6., 1. / 3., 1. / 3., 1. / 6.]
 b = [0.5, 0.5, 1.]
 #dir = '/home/danieloh/PycharmProjects/Project_Turbulence_Modelling/animation_folder/'
-
-def ifftn_mpi_slab(fu, u):
-    # Inverse Fourier transform
-    Uc_hat[:] = ifft(fu, axis=0)
-    comm.Alltoall([Uc_hat, MPI.DOUBLE_COMPLEX], [U_mpi, MPI.DOUBLE_COMPLEX])
-    Uc_hatT[:] = rollaxis(U_mpi, 1).reshape(Uc_hatT.shape)
-    u[:] = irfft2(Uc_hatT, axes=(1, 2))
-    return u
 
 
 def transform_Uc_zx(Uc_hat_z, Uc_hat_xr, P1):
@@ -171,203 +184,6 @@ def fftn_mpi(u, fu):
     fu[:]=fft(Uc_hat_y,axis=1)
     return fu
 
-
-def Cross_slow(a, b, c):
-    # 3D cross product
-    c[0] = fftn_mpi(a[1] * b[2] - a[2] * b[1], c[0])
-    c[1] = fftn_mpi(a[2] * b[0] - a[0] * b[2], c[1])
-    c[2] = fftn_mpi(a[0] * b[1] - a[1] * b[0], c[2])
-    return c
-
-@jit(nopython=True)
-def Cross(a,b,c):
-    for i in range(a.shape[1]):
-        for j in range(a.shape[2]):
-            for k in range(a.shape[3]):
-                a0 = a[0,i,j,k]
-                a1 = a[1,i,j,k]
-                a2 = a[2,i,j,k]
-                b0 = b[0,i,j,k]
-                b1 = b[1,i,j,k]
-                b2 = b[2,i,j,k]
-                c[0,i,j,k]=a1*b2-a2*b1
-                c[1,i,j,k]=a2*b0-a0*b2
-                c[2,i,j,k]=a0*b1-a1*b0
-    return c
-
-def Cross_T(c, a, b, work_array):
-    """c_k = F_k(a x b)"""
-    d = work_array[(a, 1, False)]
-    d = Cross(a,b,d)
-    c[0] = fftn_mpi(d[0], c[0])
-    c[1] = fftn_mpi(d[1], c[1])
-    c[2] = fftn_mpi(d[2], c[2])
-    return c
-
-
-def Curl(a, c):
-    # 3D curl operator
-    c[2] = ifftn_mpi(1j * (K[0] * a[1] - K[1] * a[0]), c[2])
-    c[1] = ifftn_mpi(1j * (K[2] * a[0] - K[0] * a[2]), c[1])
-    c[0] = ifftn_mpi(1j * (K[1] * a[2] - K[2] * a[1]), c[0])
-    return c
-
-@jit(nopython=True,fastmath=True)
-def cross2a(c, a, b):
-    """ c = 1j*(a x b)"""
-    for i in range(a.shape[1]):
-        for j in range(a.shape[2]):
-            for k in range(a.shape[3]):
-                a0 = a[0, i, j, k]
-                a1 = a[1, i, j, k]
-                a2 = a[2, i, j, k]
-                b0 = b[0, i, j, k]
-                b1 = b[1, i, j, k]
-                b2 = b[2, i, j, k]
-                c[0, i, j, k] = -(a1*b2.imag - a2*b1.imag) + 1j*(a1*b2.real - a2*b1.real)
-                c[1, i, j, k] = -(a2*b0.imag - a0*b2.imag) + 1j*(a2*b0.real - a0*b2.real)
-                c[2, i, j, k] = -(a0*b1.imag - a1*b0.imag) + 1j*(a0*b1.real - a1*b0.real)
-    return c
-
-def compute_curl(c, a, work, K):
-    """c = curl(a) = F_inv(F(curl(a))) = F_inv(1j*K x a)"""
-    curl_hat = work[(a, 0, False)]
-    curl_hat = cross2a(curl_hat, K, a)
-    c[0] = ifftn_mpi(curl_hat[0], c[0])
-    c[1] = ifftn_mpi(curl_hat[1], c[1])
-    c[2] = ifftn_mpi(curl_hat[2], c[2])
-    return c
-
-def computeRHS(dU, rk):
-    # Compute residual of time integral as specified in pseudo spectral Galerkin method
-    if rk > 0:
-        for i in range(3):
-            U[i] = ifftn_mpi(U_hat[i], U[i])
-
-    #curl[:] = Curl(U_hat, curl)
-    curl[:] = compute_curl(curl, U_hat, work_array, K)
-    dU = Cross_T(dU, U, curl, work_array)
-    #dU = Cross_slow(U, curl, dU)
-
-
-    dU *= dealias
-    P_hat[:] = sum(dU * K_over_K2, 0, out=P_hat)
-    dU -= P_hat * K
-    dU -= nu * K2 * U_hat
-    return dU
-
-
-def spectrum(length,u,v,w):
-    data_path = "./"
-
-    Figs_Path = "./"
-    Fig_file_name = "Ek_Spectrum"
-
-    # -----------------------------------------------------------------
-    #  COMPUTATIONS
-    # -----------------------------------------------------------------
-    localtime = time.asctime(time.localtime(time.time()))
-    print("Computing spectrum... ", localtime)
-
-
-
-    N = int(round((length ** (1. / 3))))
-    print("N =", N)
-    eps = 1e-50  # to void log(0)
-
-    U = u
-    V = v
-    W = w
-
-    amplsU = abs(fftn(U) / U.size)
-    amplsV = abs(fftn(V) / V.size)
-    amplsW = abs(fftn(W) / W.size)
-
-    EK_U = amplsU ** 2
-    EK_V = amplsV ** 2
-    EK_W = amplsW ** 2
-
-    EK_U = fftshift(EK_U)
-    EK_V = fftshift(EK_V)
-    EK_W = fftshift(EK_W)
-
-    sign_sizex = shape(EK_U)[0]
-    sign_sizey = shape(EK_U)[1]
-    sign_sizez = shape(EK_U)[2]
-
-    box_sidex = sign_sizex
-    box_sidey = sign_sizey
-    box_sidez = sign_sizez
-
-    box_radius = int(ceil((sqrt((box_sidex) ** 2 + (box_sidey) ** 2 + (box_sidez) ** 2)) / 2.) + 1)
-
-    centerx = int(box_sidex / 2)
-    centery = int(box_sidey / 2)
-    centerz = int(box_sidez / 2)
-
-    print("box sidex     =", box_sidex)
-    print("box sidey     =", box_sidey)
-    print("box sidez     =", box_sidez)
-    print("sphere radius =", box_radius)
-    print("centerbox     =", centerx)
-    print("centerboy     =", centery)
-    print("centerboz     =", centerz, "\n")
-
-    EK_U_avsphr = zeros(box_radius, ) + eps  ## size of the radius
-    EK_V_avsphr = zeros(box_radius, ) + eps  ## size of the radius
-    EK_W_avsphr = zeros(box_radius, ) + eps  ## size of the radius
-
-    for i in range(box_sidex):
-        for j in range(box_sidey):
-            for k in range(box_sidez):
-                wn = int(round(sqrt((i - centerx) ** 2 + (j - centery) ** 2 + (k - centerz) ** 2)))
-                EK_U_avsphr[wn] = EK_U_avsphr[wn] + EK_U[i, j, k]
-                EK_V_avsphr[wn] = EK_V_avsphr[wn] + EK_V[i, j, k]
-                EK_W_avsphr[wn] = EK_W_avsphr[wn] + EK_W[i, j, k]
-
-    EK_avsphr = 0.5 * (EK_U_avsphr + EK_V_avsphr + EK_W_avsphr)
-
-    fig2 = plt.figure()
-    plt.title("Kinetic Energy Spectrum")
-    plt.xlabel(r"k (wavenumber)")
-    plt.ylabel(r"TKE of the k$^{th}$ wavenumber")
-
-    realsize = len(rfft(U[:, 0, 0]))
-    plt.loglog(arange(0, realsize), ((EK_avsphr[0:realsize])), 'k')
-    plt.loglog(arange(realsize, len(EK_avsphr), 1), ((EK_avsphr[realsize:])), 'k--')
-    axes = plt.gca()
-    axes.set_ylim([10 ** -25, 5 ** -1])
-
-    print("Real      Kmax    = ", realsize)
-    print("Spherical Kmax    = ", len(EK_avsphr))
-
-    TKEofmean_discrete = 0.5 * (sum(U / U.size) ** 2 + sum(W / W.size) ** 2 + sum(W / W.size) ** 2)
-    TKEofmean_sphere = EK_avsphr[0]
-
-    total_TKE_discrete = sum(0.5 * (U ** 2 + V ** 2 + W ** 2)) / (N * 1.0) ** 3
-    total_TKE_sphere = sum(EK_avsphr)
-
-    print("the KE  of the mean velocity discrete  = ", TKEofmean_discrete)
-    print("the KE  of the mean velocity sphere    = ", TKEofmean_sphere)
-    print("the mean KE discrete  = ", total_TKE_discrete)
-    print("the mean KE sphere    = ", total_TKE_sphere)
-
-    localtime = time.asctime(time.localtime(time.time()))
-    print("Computing spectrum... ", localtime, "- END \n")
-
-    # -----------------------------------------------------------------
-    #  OUTPUT/PLOTS
-    # -----------------------------------------------------------------
-
-    dataout = zeros((box_radius, 2))
-    dataout[:, 0] = arange(0, len(dataout))
-    dataout[:, 1] = EK_avsphr[0:len(dataout)]
-
-    savetxt(Figs_Path + Fig_file_name + '.dat', dataout)
-    fig.savefig(Figs_Path + Fig_file_name + '.pdf')
-    plt.show()
-
-
 def reshape_loop(P1,P2,store_vector,u_gathered):
     #TODO Optimize using Cython
     counter = 0
@@ -401,18 +217,248 @@ def reshapeGathered(u_gathered,N,N1,N2,P1,P2,num_processes,method):
     return u_reshaped
 
 
-# initial condition and transformation to Fourier space
-U[0] = sin(X[0]) * cos(X[1]) * cos(X[2])
-U[1] = -cos(X[0]) * sin(X[1]) * cos(X[2])
-U[2] = 0
+@jit(nopython=True)
+def Cross(a,b,c):
+    for i in range(a.shape[1]):
+        for j in range(a.shape[2]):
+            for k in range(a.shape[3]):
+                a0 = a[0,i,j,k]
+                a1 = a[1,i,j,k]
+                a2 = a[2,i,j,k]
+                b0 = b[0,i,j,k]
+                b1 = b[1,i,j,k]
+                b2 = b[2,i,j,k]
+                c[0,i,j,k]=a1*b2-a2*b1
+                c[1,i,j,k]=a2*b0-a0*b2
+                c[2,i,j,k]=a0*b1-a1*b0
+    return c
+
+def Cross_T(c, a, b, work_array):
+    """c_k = F_k(a x b)"""
+    d = work_array[(a, 1, False)]
+    d = Cross(a,b,d)
+    c[0] = fftn_mpi(d[0], c[0])
+    c[1] = fftn_mpi(d[1], c[1])
+    c[2] = fftn_mpi(d[2], c[2])
+    return c
+
+@jit(nopython=True,fastmath=True)
+def cross2a(c, a, b):
+    """ c = 1j*(a x b)"""
+    for i in range(a.shape[1]):
+        for j in range(a.shape[2]):
+            for k in range(a.shape[3]):
+                a0 = a[0, i, j, k]
+                a1 = a[1, i, j, k]
+                a2 = a[2, i, j, k]
+                b0 = b[0, i, j, k]
+                b1 = b[1, i, j, k]
+                b2 = b[2, i, j, k]
+                c[0, i, j, k] = -(a1*b2.imag - a2*b1.imag) + 1j*(a1*b2.real - a2*b1.real)
+                c[1, i, j, k] = -(a2*b0.imag - a0*b2.imag) + 1j*(a2*b0.real - a0*b2.real)
+                c[2, i, j, k] = -(a0*b1.imag - a1*b0.imag) + 1j*(a0*b1.real - a1*b0.real)
+    return c
+
+def compute_curl(c, a, work, K):
+    """c = curl(a) = F_inv(F(curl(a))) = F_inv(1j*K x a)"""
+    curl_hat = work[(a, 0, False)]
+    curl_hat = cross2a(curl_hat, K, a)
+    c[0] = ifftn_mpi(curl_hat[0], c[0])
+    c[1] = ifftn_mpi(curl_hat[1], c[1])
+    c[2] = ifftn_mpi(curl_hat[2], c[2])
+    return c
+
+@jit(nopython=True)
+def dissipationLoop(wave_numbers,nu,tke):
+    sum = 0
+    wavesquare = [x**2 for x in wave_numbers]
+    for k in range(shape(wavesquare)[0]):
+        sum += (wavesquare[k]*tke[k])
+    return real(2*nu*sum)
+
+@jit(nopython=True)
+def BandEnergy(tke,kf):
+    sum = 0
+    for k in range(kf):
+        sum += (tke[k])
+    return sum
+
+
+def integralEnergy(arg):
+    #TODO make this function work in parallel?
+    result = ((sum(abs(arg[...]) ** 2)))
+    return result/N_three
+
+@jit(nopython=True)
+def kloop(nx,ny,nz,tke_spectrum,tkeh):
+    for kx in range(-nx//2, nx//2-1):
+        for ky in range(-ny//2, ny//2-1):
+            for kz in range(-nz//2, nz//2-1):
+                rk = sqrt(kx**2 + ky**2 + kz**2)
+                k = int(round(rk))
+                tke_spectrum[k] += tkeh[kx, ky, kz]
+    return tke_spectrum
+
+def movingaverage(interval, window_size):
+    window = ones(int(window_size)) / float(window_size)
+    return convolve(interval, window, 'same')
+
+def compute_tke_spectrum(u, v, w, smooth):
+    """
+    Given a velocity field u, v, w, this function computes the kinetic energy
+    spectrum of that velocity field in spectral space. This procedure consists of the
+    following steps:
+    1. Compute the spectral representation of u, v, and w using a fast Fourier transform.
+    This returns uf, vf, and wf (the f stands for Fourier)
+    2. Compute the point-wise kinetic energy Ef (kx, ky, kz) = 1/2 * (uf, vf, wf)* conjugate(uf, vf, wf)
+    3. For every wave number triplet (kx, ky, kz) we have a corresponding spectral kinetic energy
+    Ef(kx, ky, kz). To extract a one dimensional spectrum, E(k), we integrate Ef(kx,ky,kz) over
+    the surface of a sphere of radius k = sqrt(kx^2 + ky^2 + kz^2). In other words
+    E(k) = sum( E(kx,ky,kz), for all (kx,ky,kz) such that k = sqrt(kx^2 + ky^2 + kz^2) ).
+    Parameters:
+    -----------
+    u: 3D array
+      The x-velocity component.
+    v: 3D array
+      The y-velocity component.
+    w: 3D array
+      The z-velocity component.
+    lx: float
+      The domain size in the x-direction.
+    ly: float
+      The domain size in the y-direction.
+    lz: float
+      The domain size in the z-direction.
+    smooth: boolean
+      A boolean to smooth the computed spectrum for nice visualization.
+    """
+    lx,ly,lz = L,L,L
+    nx,ny,nz = N,N,N
+
+    nt = nx * ny * nz
+    n = nx  # int(np.round(np.power(nt,1.0/3.0)))
+
+    uh = fftn(u) / nt
+    vh = fftn(v) / nt
+    wh = fftn(w) / nt
+
+    tkeh = 0.5 * (uh * conj(uh) + vh * conj(vh) + wh * conj(wh)).real
+
+    k0 = 2.0 * pi / lx
+    knorm = (k0 + k0 + k0) / 3.0
+    kmax = n / 2
+
+    # dk = (knorm - kmax)/n
+    # wn = knorm + 0.5 * dk + arange(0, nmodes) * dk
+
+    wave_numbers = knorm * arange(0, n)
+
+    tke_spectrum = zeros(len(wave_numbers))
+    tke_spectrum = kloop(nx,ny,nz,tke_spectrum,tkeh)
+    tke_spectrum = tke_spectrum / knorm
+
+    if smooth:
+        tkespecsmooth = movingaverage(tke_spectrum, 5)  # smooth the spectrum
+        tkespecsmooth[0:4] = tke_spectrum[0:4]  # get the first 4 values from the original data
+        tke_spectrum = tkespecsmooth
+
+    knyquist = knorm * min(nx, ny, nz) / 2
+
+    return knyquist, wave_numbers, tke_spectrum
+
+def initialize(rank,K,dealias,K2,N,U_hat):
+
+    # Create mask with ones where |k| < Kf2 and zeros elsewhere
+    #kf = 5
+    #k2_mask = where(K2 <= kf**2, 1, 0)
+    #k2_mask = dealias
+    random.seed(rank)
+    k = sqrt(K2)
+    k = where(k == 0, 1, k)
+    kk = K2.copy()
+    kk = where(kk == 0, 1, kk)
+    k1, k2, k3 = K[0], K[1], K[2]
+    ksq = sqrt(k1**2+k2**2)
+    ksq = where(ksq == 0, 1, ksq)
+
+    E0 = sqrt(9./11./kf*K2*(kf)**2)*k2_mask
+    E1 = sqrt(9./11./kf*(k/kf)**(-5./3.))*(1-k2_mask)
+    Ek = E0 + E1
+    # theta1, theta2, phi, alpha and beta from [1]
+    theta1, theta2, phi = random.sample(U_hat.shape)*2j*pi
+    alpha = sqrt(Ek/4./pi/kk)*exp(1j*theta1)*cos(phi)
+    beta = sqrt(Ek/4./pi/kk)*exp(1j*theta2)*sin(phi)
+    U_hat[0] = (alpha*k*k2 + beta*k1*k3)/(k*ksq)
+    U_hat[1] = (beta*k2*k3 - alpha*k*k1)/(k*ksq)
+    U_hat[2] = beta*ksq/k
+
+
+
+
+    # project to zero divergence
+    U_hat[:] -= (K[0]*U_hat[0]+K[1]*U_hat[1]+K[2]*U_hat[2])*K_over_K2
+    '''
+    energy = 0.5 * integralEnergy(U_hat)
+    U_hat *= sqrt(target / energy)
+    energy= 0.5 * integralEnergy(U_hat)
+    '''
+    return U_hat
+
+def computeRHS(dU, rk):
+    # Compute residual of time integral as specified in pseudo spectral Galerkin method
+    # TODO add forcing term here?
+    if rk > 0:
+        for i in range(3):
+            U[i] = ifftn_mpi(U_hat[i], U[i])
+
+    curl[:] = compute_curl(curl, U_hat, work_array, K)
+    dU = Cross_T(dU, U, curl, work_array)
+
+    dU *= dealias
+    P_hat[:] = sum(dU * K_over_K2, 0, out=P_hat)
+    dU -= P_hat * K
+    dU -= nu * K2 * U_hat
+    '''
+    energy_new = L2_norm(comm,U_hat, N_three)
+    energy_lower = L2_norm(comm, U_hat * k2_mask, N_three)
+    energy_upper = energy_new - energy_lower
+
+    alpha2 = (target_energy - energy_upper) / energy_lower
+    alpha = sqrt(alpha2)
+
+    #energy_old = energy_new
+
+    print(energy_new)
+    tmp = (alpha * k2_mask + (1 - k2_mask))*U_hat
+    energy_new = L2_norm(comm, tmp, N_three)
+
+    assert sqrt((energy_new - target_energy) ** 2) < 1e-7, sqrt((energy_new - target_energy) ** 2)
+
+    dU *= alpha
+    '''
+    #TODO activate this source term
+    dU += (eps*U_hat*k2_mask/(2*kinE))
+    return dU
+
 
 if __name__ == '__main__':
-
-    for i in range(3):
-        U_hat[i] = fftn_mpi(U[i], U_hat[i])
+    # initial condition and transformation to Fourier space
+    if IC == 'isotropic':
+        U_hat = initialize(rank, K, dealias, K2,N,U_hat)
+        for i in range(3):
+            U[i] = ifftn_mpi(U_hat[i], U[i])
+    if IC == 'TG':
+        U[0] = sin(X[0]) * cos(X[1]) * cos(X[2])
+        U[1] = -cos(X[0]) * sin(X[1]) * cos(X[2])
+        U[2] = 0
+        for i in range(3):
+            U_hat[i] = fftn_mpi(U[i], U_hat[i])
+    #target_energy = integralEnergy(U_hat) #Use when rank==0
 
     t = 0.0
     tstep = 0
+    t_array = arange(0,Tend,dt)
+    energyarray = []
     plot_step = N_tsteps*bool_percentile
     fig = plt.figure()
     ims = []
@@ -421,12 +467,6 @@ if __name__ == '__main__':
         pbar = tqdm(total=int(Tend / dt))
     except:
         pass
-
-    '''
-    if rank==0:
-        progressfile = open('progressfile.txt','w+')
-        progressfile.truncate(0)
-    '''
 
     # ims is a list of lists, each row is a list of artists to draw in the
     # current frame; here we are just animating one artist, the image, in
@@ -437,21 +477,27 @@ if __name__ == '__main__':
         # Time integral using a Runge Kutta scheme
         t += dt;
         U_hat1[:] = U_hat0[:] = U_hat
+
+
         for rk in range(4):
             # Run RK4 temporal integral method
             dU = computeRHS(dU, rk)
             if rk < 3: U_hat[:] = U_hat0 + b[rk] * dt * dU
             U_hat1[:] += a[rk] * dt * dU
+
         U_hat[:] = U_hat1[:]
         for i in range(3):
             # Inverse Fourier transform after RK4 algorithm
             U[i] = ifftn_mpi(U_hat[i], U[i])
-    
-    
+
         if tstep%plot_step==0:
             u_gathered = comm.gather(U, root=0)
             if rank==0:
                 u_reshaped = reshapeGathered(u_gathered,N,N1,N2,P1,P2,num_processes,method='concatenate')
+                nyquist, k, tke = compute_tke_spectrum(u_reshaped[0], u_reshaped[1], u_reshaped[2], True)
+                eps = dissipationLoop(k, nu, tke)
+                #print(tke,flush=True)
+                kinE = BandEnergy(tke, kf)
                 if plotting == 'animation':
                     im = plt.imshow(u_reshaped[0][:,:,-1],cmap='jet', animated=True)
                     ims.append([im])
@@ -459,27 +505,37 @@ if __name__ == '__main__':
                     plt.imshow(u_reshaped[0][:,:,-1],cmap='jet')
                     plt.pause(0.05)
                     #plt.pause(0.05)
+                if plotting =='EnergyKf':
+                    energyarray.append(tke[kf])
+                    plt.plot(t_array[0:len(energyarray)],energyarray,'r--')
+                    plt.xlabel('Time steps')
+                    plt.ylabel('E(kf)')
+                    plt.pause(0.05)
                 if plotting == 'spectrum':
-                    spectrum(N, u_reshaped[0], u_reshaped[1], u_reshaped[2])
+                    #TODO plot the spectrum with k\eta such that the last place y-axis crosses, is at kolmogorov scale.
+                    plt.loglog(eta*k[1:-1], tke[1:-1]*(eps**(-2/3)), 'k-')
+                    plt.loglog(eta*k[1:-1], (k[1:-1] ** (-5 / 3))*(eps**(-2/3)), 'r--')
+                    #plt.xticks(xticks)
+                    #plt.yticks(yticks)
+                    plt.xlabel('Wave number, $k\eta$')
+                    plt.ylabel('Turbulent kinetic energy, $E(k)$')
+                    plt.legend(['$E(k)$,  t= %.2f' % (tstep / 100), '$Ck^{-5/3}$'], loc='upper right')
+                    plt.pause(0.05)
+                    plt.close()
                 if plotting == 'savefig':
                     plt.imshow(u_reshaped[0][:, :, -1], cmap='jet')
                     plt.savefig('images/turb_t_'+str(int(tstep)))
                 if plotting=='noFigure':
                     print('next iteration')
                 if plotting =='saveNumpy':
-                    save('vel_files/velocity_'+str(tstep)+'.npy',u_reshaped)
+                    save('vel_files_iso/velocity_'+str(tstep)+'.npy',u_reshaped)
+
 
         tstep += 1
-        #if rank ==0:
+        if rank ==0:
             #progressfile.write("tstep= %d\r\n" % (tstep),flush=True)
-            #print('tstep= %d\r\n'%(tstep),flush=True)
+            print('tstep= %d\r\n'%(tstep),flush=True)
         try:
             pbar.update(1)
         except:
             pass
-
-    if plotting=='animation':
-        if rank==0:
-            ani = animation.ArtistAnimation(fig, ims, interval=2, blit=True,
-                                            repeat_delay=None)
-            ani.save('animationVelocity.gif', writer='imagemagick')

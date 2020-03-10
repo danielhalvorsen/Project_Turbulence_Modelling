@@ -17,7 +17,7 @@ def movingaverage(interval, window_size):
     window = ones(int(window_size)) / float(window_size)
     return convolve(interval, window, 'same')
 
-@jit(nopython=True)
+@jit(nopython=True,parallel=True)
 def kloop(nx,ny,nz,tke_spectrum,tkeh):
     for kx in range(-nx//2, nx//2-1):
         for ky in range(-ny//2, ny//2-1):
@@ -72,9 +72,50 @@ def dissipationComputation(a, work, K,nu):
     dissipation = integralDissipation(curl_hat)
     return dissipation*nu
 
+def dissipationComputation(b, work, K,nu):
+    """c = curl(a) = F_inv(F(curl(a))) = F_inv(1j*K x a)"""
+    uh = fftn(b[0])/N_three
+    vh = fftn(b[1])/N_three
+    wh = fftn(b[2])/N_three
+    tmp = array([uh,vh,wh])
+
+    curl_hat = work[(tmp, 0, False)]
+    curl_hat = cross2a(curl_hat, K, tmp)
+    #c[0] = ifft(curl_hat[0])
+    #c[1] = ifft(curl_hat[1])
+    #c[2] = ifft(curl_hat[2])
+    dissipation = integralEnergy(comm,curl_hat)
+    return dissipation*nu
+
+@jit(nopython=True,parallel=True)
+def dissipationLoop(wave_numbers,nu,tke):
+    sum = 0
+    K2 = [x**2 for x in wave_numbers]
+    for k in range(np.shape(K2)[0]):
+        sum += (K2[k]*tke[k])
+    return np.real(2*nu*sum)
+
+@jit(nopython=True)
+def BandEnergy(tke,kf):
+    sum = 0
+    for k in range(kf):
+        sum += (tke[k])
+    return sum
 
 
+def integralEnergy(arg):
+    #TODO make this function work in parallel?
+    result = ((sum(abs(arg[...]) ** 2)))
+    return result/N_three
 
+def L2_norm(comm, arg,N_three):
+    r"""Compute the L2-norm of real array a
+    Computing \int abs(u)**2 dx
+    """
+
+    #result =
+    result = comm.allreduce((sum(abs(arg[...]) ** 2)))
+    return result/N_three
 
 
 def compute_tke_spectrum(u, v, w, length, smooth):
@@ -272,11 +313,11 @@ step=0
 length=2*np.pi
 xticks = np.logspace(0,2,7)
 yticks = np.logspace(1,-13,5)
-N=512
+N=64
 nu = 1/1600
-amount = 32
-name = 'vel_files/velocity_'+str(step)+'.npy'
-plot = 'spectrum2'
+amount = 50
+name = 'vel_files_iso/velocity_'+str(step)+'.npy'
+plot = 'isoVelocity'
 counter =0
 dissipationArray = np.zeros((32))
 timearray = np.arange(0,4460,140)/100
@@ -289,12 +330,16 @@ if runLoop == True:
     K2 = np.sum(K * K, 0, dtype=int)
     #TODO load in one and one file from /vel_files, read [0][:,:,-1] and add to animation. Also make spectrum plots and viscous diffusion plots
     for i in range(amount):
-        name = 'vel_files/velocity_' + str(step) + '.npy'
+        name = 'vel_files_iso/velocity_' + str(step) + '.npy'
         vec = np.load(name)
         print('Loaded nr: '+str(step),flush=True)
         if plot == 'plotVelocity':
             im = plt.imshow(vec[0][:,:,-1],cmap='jet', animated=True)
             ims.append([im])
+        if plot == 'isoVelocity':
+            im = plt.imshow(vec[0][:,-1,:],cmap='jet', animated=True)
+            plt.savefig('iso_images/velocity_' + str(step))
+            plt.clf()
         if plot == 'spectrum1':
             fig = spectrum(N,vec[0],vec[1],vec[2])
             plt.savefig('spectrum_plots/spectrum_'+str(step))
@@ -322,14 +367,14 @@ if runLoop == True:
 
 
 
-        step += 140
+        step += 2
         print('Finished appending nr: '+str(step),flush=True)
     np.save('dissipation.npy',dissipationArray)
     plt.plot(timearray,dissipationArray)
 
-    plt.savefig('testfig')
+
     '''
-    if plot =='spectrum2':
+    if plot =='plotVelocity':
         ani = animation.ArtistAnimation(fig, ims, interval=2, blit=False,repeat_delay=None)
         ani.save('spectrum.gif', writer='imagemagick')
     '''
