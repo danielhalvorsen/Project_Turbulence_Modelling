@@ -6,6 +6,12 @@
 
 
 
+<p align="center">
+<img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/iso256Nice.gif" width="350"/><img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/256spectrum_fixedaxis.gif" width="350"/>
+</p>
+3D-isotropic turbulence, N=256, Re=1600. See [1] for initialization and [2] for a section
+on forcing the lowest wavenumbers (k<=kf=8) to maintain a constant turbulent
+kinetic energy. Parameters related to the initial condition are set such that the kinetic energy matches Taylor-Green initial conditions.
 
 
 <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/512_70_xy.gif" width="280"/> <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/512_70_xz.gif" width="280"/><img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/512_70_yz.gif" width="280"/>
@@ -32,3 +38,11 @@ Left animation: 2D- vorticity field. Re=1600, N=256. Smaller vortices give energ
 
 <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/2D/nice2.gif" width="425"/> <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/2D/fieldspread2.gif" width="425"/>
 Left animation: 2D- vorticity field. Re=1600, N=256. Smaller vortices give energy to larger vortices. Right animation: 2D Advection-Diffusion equation solved with an initial concentration distribution. Velocity distribution from the left vorticity field. Diffusion constant set to be 0.0008
+
+### References
+[1] R. S. Rogallo, "Numerical experiments in homogeneous turbulence,"
+NASA TM 81315 (1981)
+
+[2] A. G. Lamorgese and D. A. Caughey and S. B. Pope, "Direct numerical simulation
+of homogeneous turbulence with hyperviscosity", Physics of Fluids, 17, 1, 015106,
+2005, (https://doi.org/10.1063/1.1833415)
