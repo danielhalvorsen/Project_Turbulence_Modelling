@@ -313,14 +313,18 @@ step=0
 length=2*np.pi
 xticks = np.logspace(0,2,7)
 yticks = np.logspace(1,-13,5)
-N=64
+N=256
+kf = 8
 nu = 1/1600
-amount = 50
+amount = 105
 name = 'vel_files_iso/velocity_'+str(step)+'.npy'
-plot = 'isoVelocity'
+plot = 'spectrum2'
 counter =0
-dissipationArray = np.zeros((32))
-timearray = np.arange(0,4460,140)/100
+dissipationArray = np.zeros((amount))
+stepjump = 60
+timearray = np.arange(0,(amount*100),stepjump)/100
+energyarrayKf = []
+energyarrayKin = []
 
 runLoop = True
 
@@ -337,7 +341,7 @@ if runLoop == True:
             im = plt.imshow(vec[0][:,:,-1],cmap='jet', animated=True)
             ims.append([im])
         if plot == 'isoVelocity':
-            im = plt.imshow(vec[0][:,-1,:],cmap='jet', animated=True)
+            im = plt.imshow(vec[0][:,-1,:], animated=True)
             plt.savefig('iso_images/velocity_' + str(step))
             plt.clf()
         if plot == 'spectrum1':
@@ -347,13 +351,23 @@ if runLoop == True:
             #ims.append([im])
         if plot == 'spectrum2':
             nyquist,k,tke = compute_tke_spectrum(vec[0],vec[1],vec[2],length,True)
-            plt.loglog(k,tke,'k-')
-            plt.loglog(k,(k**(-5/3)),'r--')
-            plt.xticks(xticks)
-            plt.yticks(yticks)
+            eps = dissipationLoop(k, nu, tke)
+            kinBand = BandEnergy(tke, kf)
+            kinTotal = BandEnergy(tke, k[-1])
+            #energyarrayKin.append(kinBand)
+            #plt.plot(timearray[0:len(energyarrayKin)] , energyarrayKin, 'r--')
+
+
+            plt.loglog(k[1:-1],tke[1:-1],'k-')
+            plt.loglog(k[1:-1],(k[1:-1]**(-5/3)),'r--')
+            plt.yscale('log')
+            plt.ylim(ymin=(1e-13), ymax=1)
+            # plt.xticks(xticks)
+            # plt.yticks(yticks)
             plt.xlabel('Wave number, $k$')
             plt.ylabel('Turbulent kinetic energy, $E(k)$')
             plt.legend(['$E(k)$,  t= %.2f'%(step/100), '$Ck^{-5/3}$'],loc='upper right')
+
             plt.savefig('spectrum_plots/spectrum_'+str(step))
             plt.clf()
         if plot == 'dissipation':
@@ -367,7 +381,7 @@ if runLoop == True:
 
 
 
-        step += 2
+        step += stepjump
         print('Finished appending nr: '+str(step),flush=True)
     np.save('dissipation.npy',dissipationArray)
     plt.plot(timearray,dissipationArray)
