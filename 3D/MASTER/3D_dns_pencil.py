@@ -17,7 +17,7 @@ work_array = work_arrays()
 ###############################################
 # USER CHOICE ##
 nu = 0.000625
-Tend = 100
+Tend = 60
 dt = 0.01
 N_tsteps = ceil(Tend/dt)
 bool_percentile = 0.01
@@ -25,16 +25,16 @@ plotting = 'saveNumpy'
 IC = 'isotropic'
 L = 2*pi
 eta = 2*pi*((1/nu)**(-3/4))
-N = int(2 ** 9)
+N = int(2 ** 5)
 N_three = N**3
 
 xticks = logspace(-1,0,4)
 yticks = logspace(1,-1,4)
 
-kf = 3 #Highest wave number that is forced.
+kf = 8 #Highest wave number that is forced.
 Re_lam = 128
 k0 = 1.7 #Kolmogorov constant
-kd = 50 #Dissipative length scale, inverse of kolmogorov length scale \eta.
+kd = 1/eta #Dissipative length scale, inverse of kolmogorov length scale \eta.
 target = Re_lam*(nu*kd)**2/(sqrt(20./3.)) # Energy of flow with given parameters of Re_lam, kd and nu.
 ###############################################
 ###############################################
@@ -80,7 +80,7 @@ kx_single = fftfreq(N, 1. / N)
 K_single = array(meshgrid(kx,kx, kz, indexing='ij'), dtype=int)
 K2_single = sum(K_single * K_single, 0, dtype=int)
 eps = 0
-kinE = 1
+kinBand = 1
 
 # Preallocate arrays, decomposed using a 2D-pencil approach
 U = empty((3, N1, N2, N), dtype=float32)
@@ -284,10 +284,10 @@ def BandEnergy(tke,kf):
     return sum
 
 
-def integralEnergy(arg):
+def integralEnergy(comm,arg):
     #TODO make this function work in parallel?
     result = ((sum(abs(arg[...]) ** 2)))
-    return result/N_three
+    return comm.allreduce(result/N_three)
 
 @jit(nopython=True)
 def kloop(nx,ny,nz,tke_spectrum,tkeh):
@@ -366,6 +366,37 @@ def compute_tke_spectrum(u, v, w, smooth):
 
     return knyquist, wave_numbers, tke_spectrum
 
+def initialize2(rank,K,dealias,K2,N,U_hat):
+    random.seed(rank)
+    k = sqrt(K2)
+    k = where(k == 0, 1, k)
+    kk = K2.copy()
+    kk = where(kk == 0, 1, kk)
+    k1, k2, k3 = K[0], K[1], K[2]
+    ksq = sqrt(k1 ** 2 + k2 ** 2)
+    ksq = where(ksq == 0, 1, ksq)
+
+    C=10000
+    a=3.5
+    Ek = (C*abs(k)*2*N_three/((2*pi)**3))*exp((-abs(kk))/(a**2))
+    # theta1, theta2, phi, alpha and beta from [1]
+    theta1, theta2, phi = random.sample(U_hat.shape) * 2j * pi
+    alpha = sqrt(Ek / 4. / pi / kk) * exp(1j * theta1) * cos(phi)
+    beta = sqrt(Ek / 4. / pi / kk) * exp(1j * theta2) * sin(phi)
+    U_hat[0] = (alpha * k * k2 + beta * k1 * k3) / (k * ksq)
+    U_hat[1] = (beta * k2 * k3 - alpha * k * k1) / (k * ksq)
+    U_hat[2] = beta * ksq / k
+
+    # project to zero divergence
+    U_hat[:] -= (K[0] * U_hat[0] + K[1] * U_hat[1] + K[2] * U_hat[2]) * K_over_K2
+
+    '''
+    energy = 0.5 * integralEnergy(comm,U_hat)
+    U_hat *= sqrt(target / energy)
+    energy= 0.5 * integralEnergy(comm,U_hat)
+    '''
+    return U_hat
+
 def initialize(rank,K,dealias,K2,N,U_hat):
 
     # Create mask with ones where |k| < Kf2 and zeros elsewhere
@@ -388,8 +419,8 @@ def initialize(rank,K,dealias,K2,N,U_hat):
     theta1, theta2, phi = random.sample(U_hat.shape)*2j*pi
     alpha = sqrt(Ek/4./pi/kk)*exp(1j*theta1)*cos(phi)
     beta = sqrt(Ek/4./pi/kk)*exp(1j*theta2)*sin(phi)
-    U_hat[0] = (alpha*k*k2 + beta*k1*k3)/(k*ksq)
-    U_hat[1] = (beta*k2*k3 - alpha*k*k1)/(k*ksq)
+    U_hat[0] = (alpha*k*k2 + beta*k1*k3)/(k*ksq)*100
+    U_hat[1] = (beta*k2*k3 - alpha*k*k1)/(k*ksq)*100
     U_hat[2] = beta*ksq/k
 
 
@@ -397,10 +428,11 @@ def initialize(rank,K,dealias,K2,N,U_hat):
 
     # project to zero divergence
     U_hat[:] -= (K[0]*U_hat[0]+K[1]*U_hat[1]+K[2]*U_hat[2])*K_over_K2
+
     '''
-    energy = 0.5 * integralEnergy(U_hat)
+    energy = 0.5 * integralEnergy(comm,U_hat)
     U_hat *= sqrt(target / energy)
-    energy= 0.5 * integralEnergy(U_hat)
+    energy= 0.5 * integralEnergy(comm,U_hat)
     '''
     return U_hat
 
@@ -418,33 +450,17 @@ def computeRHS(dU, rk):
     P_hat[:] = sum(dU * K_over_K2, 0, out=P_hat)
     dU -= P_hat * K
     dU -= nu * K2 * U_hat
-    '''
-    energy_new = L2_norm(comm,U_hat, N_three)
-    energy_lower = L2_norm(comm, U_hat * k2_mask, N_three)
-    energy_upper = energy_new - energy_lower
 
-    alpha2 = (target_energy - energy_upper) / energy_lower
-    alpha = sqrt(alpha2)
 
-    #energy_old = energy_new
-
-    print(energy_new)
-    tmp = (alpha * k2_mask + (1 - k2_mask))*U_hat
-    energy_new = L2_norm(comm, tmp, N_three)
-
-    assert sqrt((energy_new - target_energy) ** 2) < 1e-7, sqrt((energy_new - target_energy) ** 2)
-
-    dU *= alpha
-    '''
     #TODO activate this source term
-    dU += (eps*U_hat*k2_mask/(2*kinE))
+    #dU += (eps*U_hat*k2_mask/(2*kinBand))
     return dU
 
 
 if __name__ == '__main__':
     # initial condition and transformation to Fourier space
     if IC == 'isotropic':
-        U_hat = initialize(rank, K, dealias, K2,N,U_hat)
+        U_hat = initialize2(rank, K, dealias, K2,N,U_hat)
         for i in range(3):
             U[i] = ifftn_mpi(U_hat[i], U[i])
     if IC == 'TG':
@@ -453,12 +469,12 @@ if __name__ == '__main__':
         U[2] = 0
         for i in range(3):
             U_hat[i] = fftn_mpi(U[i], U_hat[i])
-    #target_energy = integralEnergy(U_hat) #Use when rank==0
-
+    target_energy = integralEnergy(comm,U_hat)
     t = 0.0
     tstep = 0
     t_array = arange(0,Tend,dt)
-    energyarray = []
+    energyarrayKf = []
+    energyarrayKin = []
     plot_step = N_tsteps*bool_percentile
     fig = plt.figure()
     ims = []
@@ -472,12 +488,10 @@ if __name__ == '__main__':
     # current frame; here we are just animating one artist, the image, in
     # each frame
 
-    
     while t < Tend - 1e-8:
         # Time integral using a Runge Kutta scheme
         t += dt;
         U_hat1[:] = U_hat0[:] = U_hat
-
 
         for rk in range(4):
             # Run RK4 temporal integral method
@@ -486,6 +500,22 @@ if __name__ == '__main__':
             U_hat1[:] += a[rk] * dt * dU
 
         U_hat[:] = U_hat1[:]
+
+
+        energy_new = integralEnergy(comm, U_hat)
+        energy_lower = integralEnergy(comm, U_hat * k2_mask)
+        energy_upper = energy_new - energy_lower
+        alpha2 = (target_energy - energy_upper) / energy_lower
+        alpha = sqrt(alpha2)
+
+        U_hat *= (alpha * k2_mask + (1 - k2_mask))
+        energy_new = integralEnergy(comm, U_hat)
+        if rank == 0:
+            print(energy_new)
+        assert sqrt((energy_new - target_energy) ** 2) < 1e-7, sqrt((energy_new - target) ** 2)
+
+
+
         for i in range(3):
             # Inverse Fourier transform after RK4 algorithm
             U[i] = ifftn_mpi(U_hat[i], U[i])
@@ -496,8 +526,9 @@ if __name__ == '__main__':
                 u_reshaped = reshapeGathered(u_gathered,N,N1,N2,P1,P2,num_processes,method='concatenate')
                 nyquist, k, tke = compute_tke_spectrum(u_reshaped[0], u_reshaped[1], u_reshaped[2], True)
                 eps = dissipationLoop(k, nu, tke)
-                #print(tke,flush=True)
-                kinE = BandEnergy(tke, kf)
+                #print(eps)
+                kinBand = BandEnergy(tke, kf)
+                kinTotal= BandEnergy(tke,k[-1])
                 if plotting == 'animation':
                     im = plt.imshow(u_reshaped[0][:,:,-1],cmap='jet', animated=True)
                     ims.append([im])
@@ -505,10 +536,16 @@ if __name__ == '__main__':
                     plt.imshow(u_reshaped[0][:,:,-1],cmap='jet')
                     plt.pause(0.05)
                     #plt.pause(0.05)
+                if plotting == 'EnergyTotal':
+                    energyarrayKin.append(kinTotal)
+                    plt.plot(t_array[0:len(energyarrayKin)] * (plot_step), energyarrayKin, 'r--')
+                    plt.xlabel('Time, (s)')
+                    plt.ylabel('$E_{kin}$')
+                    plt.pause(0.05)
                 if plotting =='EnergyKf':
-                    energyarray.append(tke[kf])
-                    plt.plot(t_array[0:len(energyarray)],energyarray,'r--')
-                    plt.xlabel('Time steps')
+                    energyarrayKf.append(tke[kf])
+                    plt.plot(t_array[0:len(energyarrayKf)]*(plot_step),energyarrayKf,'r--')
+                    plt.xlabel('Time, (s)')
                     plt.ylabel('E(kf)')
                     plt.pause(0.05)
                 if plotting == 'spectrum':
