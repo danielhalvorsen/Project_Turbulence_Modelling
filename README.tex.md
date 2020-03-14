@@ -32,7 +32,7 @@ Computed energy spectrum E(k) for the time range t in [0,42]. Right image shows 
 
 
 ### 2D "turbulence" generated from vorticity-streamfunction formulation. ###
-* Note: timescales on animations not fixed. 
+* Note: timescales on animations not fixed. See [3] for a presentation of the vorticity-streamfunction formulation and 2D advection diffusion equation and the initial condition to these PDE's.
  
 <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/2D/nice.gif" width="425"/> <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/2D/fieldspread.gif" width="425"/>
 Left animation: 2D- vorticity field. Re=1600, N=256. Smaller vortices give energy to larger vortices. Right animation: 2D Advection-Diffusion equation solved with an initial concentration distribution. Velocity distribution from the left vorticity field. Diffusion constant set to be 0.0008
@@ -48,3 +48,6 @@ NASA TM 81315 (1981)
 [2] A. G. Lamorgese and D. A. Caughey and S. B. Pope, "Direct numerical simulation
 of homogeneous turbulence with hyperviscosity", Physics of Fluids, 17, 1, 015106,
 2005, (https://doi.org/10.1063/1.1833415)
+
+[3] D. Halvorsen, "Studies of Turbulent Diffusion through Direct Numerical Simulation", Specialization Project, NTNU 2019,
+(https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/Texts/Project_NTNU_2019.pdf)
