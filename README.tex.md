@@ -1,7 +1,5 @@
 #DNS solver for the Navier-Stokes equations using a spectral method #
 
-
-
 ### Homogenous isotropic forced turbulence. ###
 
 <p align="center">
@@ -10,7 +8,6 @@
 3D-isotropic turbulence, N=512, Re=1600. The energy spectrum is seen to not follow the Kolmogorov theory as closely as desired. See [1] for initialization and [2] for a section
 on forcing the lowest wavenumbers (k<=kf=8) to maintain a constant turbulent
 kinetic energy. Parameters related to the initial condition are set such that the kinetic energy matches Taylor-Green initial conditions (a= 3.5, C=10000).
-
 
 
 <p align="center">
