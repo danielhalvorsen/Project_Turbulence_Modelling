@@ -3,12 +3,22 @@
 
 * Study of turbulent diffusion
 
+
+<p align="center">
+<img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/512isotropic_green.gif" width="350"/><img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/spectrum512.gif" width="350"/>
+</p>
+3D-isotropic turbulence, N=512, Re=1600. The energy spectrum is seen to not follow the Kolmogorov theory as closely as desired. See [1] for initialization and [2] for a section
+on forcing the lowest wavenumbers (k<=kf=8) to maintain a constant turbulent
+kinetic energy. Parameters related to the initial condition are set such that the kinetic energy matches Taylor-Green initial conditions (C=10000).
+
+
+
 <p align="center">
 <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/iso256Nice.gif" width="350"/><img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/256spectrum_fixedaxis.gif" width="350"/>
 </p>
 3D-isotropic turbulence, N=256, Re=1600. See [1] for initialization and [2] for a section
 on forcing the lowest wavenumbers (k<=kf=8) to maintain a constant turbulent
-kinetic energy. Parameters related to the initial condition are set such that the kinetic energy matches Taylor-Green initial conditions.
+kinetic energy. Parameters related to the initial condition are set such that the kinetic energy matches Taylor-Green initial conditions (C=2600).
 
 ***
 
