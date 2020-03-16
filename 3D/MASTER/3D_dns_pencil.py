@@ -554,7 +554,7 @@ if __name__ == '__main__':
                     plt.pause(0.05)
                 if plotting == 'spectrum':
                     #TODO plot the spectrum with k\eta such that the last place y-axis crosses, is at kolmogorov scale.
-                    plt.loglog(k[2:N_half], tke[2:-N_half]*(eps**(-2/3)), 'go')
+                    plt.loglog(k[2:N_half], tke[2:-N_half]*(eps**(-2/3)), 'g.','markerSize=2')
                     plt.loglog(k[2:N_half], (k[2:N_half] ** (-5 / 3))*(eps**(-2/3)), 'r--')
                     #plt.xticks(xticks)
                     #plt.yticks(yticks)
@@ -562,7 +562,7 @@ if __name__ == '__main__':
                     plt.ylim(ymin=(1e-18), ymax=1e3)
                     plt.xlabel('Wave number, $k$')
                     plt.ylabel('Turbulent kinetic energy, $E(k)$')
-                    plt.legend(['$E(k)$,  t= %.2f' % (tstep / 100), r'$\epsilon^{-2/3}k^{-5/3}$'], loc='upper right')
+                    plt.legend(['$E(k)$,  t= %.2f' % (tstep / 100), r'$\epsilon^{-2/3}k^{-5/3}$'], loc='lower left')
                     plt.pause(0.05)
                     plt.close()
                 if plotting == 'savefig':
