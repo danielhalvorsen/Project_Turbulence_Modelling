@@ -19,7 +19,7 @@
 
 See [1] for initialization and [2] for a section
 on forcing the lowest wavenumbers (k<=kf=8) to maintain a constant turbulent
-kinetic energy. Parameters related to the initial condition are set such that the kinetic energy matches Taylor-Green initial conditions (a= 3.5, C=2600).
+kinetic energy. Parameters related to the initial condition are set such that the kinetic energy matches Taylor-Green initial conditions (a= [9.5,3.5], C=[10000,2600]).
 
 ### Decaying Taylor Green Vortex. ###
 
