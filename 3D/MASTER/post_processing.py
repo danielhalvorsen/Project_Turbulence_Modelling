@@ -313,15 +313,16 @@ step=0
 length=2*np.pi
 xticks = np.logspace(0,2,7)
 yticks = np.logspace(1,-13,5)
-N=256
+N=512
+N_half = int(N/2)
 kf = 8
 nu = 1/1600
-amount = 105
+amount = 50
 name = 'vel_files_iso/velocity_'+str(step)+'.npy'
 plot = 'spectrum2'
 counter =0
 dissipationArray = np.zeros((amount))
-stepjump = 60
+stepjump = 120
 timearray = np.arange(0,(amount*100),stepjump)/100
 energyarrayKf = []
 energyarrayKin = []
@@ -358,15 +359,15 @@ if runLoop == True:
             #plt.plot(timearray[0:len(energyarrayKin)] , energyarrayKin, 'r--')
 
 
-            plt.loglog(k[1:-1],tke[1:-1],'k-')
-            plt.loglog(k[1:-1],(k[1:-1]**(-5/3)),'r--')
+            plt.loglog(k[1:N_half],tke[1:N_half],'g.','markerSize=2')
+            plt.loglog(k[1:N_half],(k[1:N_half]**(-5/3))*(eps**(-2/3)),'r--')
             plt.yscale('log')
-            plt.ylim(ymin=(1e-13), ymax=1)
+            plt.ylim(ymin=(1e-18), ymax=1e3)
             # plt.xticks(xticks)
             # plt.yticks(yticks)
             plt.xlabel('Wave number, $k$')
             plt.ylabel('Turbulent kinetic energy, $E(k)$')
-            plt.legend(['$E(k)$,  t= %.2f'%(step/100), '$Ck^{-5/3}$'],loc='upper right')
+            plt.legend(['$E(k)$,  t= %.2f'%(step/100), r'$\epsilon^{-2/3}k^{-5/3}$'],loc='lower left')
 
             plt.savefig('spectrum_plots/spectrum_'+str(step))
             plt.clf()
