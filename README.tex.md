@@ -3,17 +3,16 @@
 ### Homogenous isotropic forced turbulence. ###
 
 <p align="center">
-<img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/512isotropic_green.gif" width="350"/><img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/spectrum512.gif" width="350"/>
+<img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/iso512_niceEnergy.gif" width="350"/><img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/spectrum512_niceEnergy.gif" width="350"/>
 </p>
-3D-isotropic turbulence, N=512, Re=1600. The energy spectrum is seen to not follow the Kolmogorov theory as closely as desired. See [1] for initialization and [2] for a section
-on forcing the lowest wavenumbers (k<=kf=8) to maintain a constant turbulent
-kinetic energy. Parameters related to the initial condition are set such that the kinetic energy matches Taylor-Green initial conditions (a= 3.5, C=10000).
-
+3D-isotropic turbulence, N=512, Re=1600, T=44.
 
 <p align="center">
 <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/iso256Nice.gif" width="350"/><img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/256spectrum_fixedaxis.gif" width="350"/>
 </p>
-3D-isotropic turbulence, N=256, Re=1600. See [1] for initialization and [2] for a section
+3D-isotropic turbulence, N=256, Re=1600, T=60. 
+
+See [1] for initialization and [2] for a section
 on forcing the lowest wavenumbers (k<=kf=8) to maintain a constant turbulent
 kinetic energy. Parameters related to the initial condition are set such that the kinetic energy matches Taylor-Green initial conditions (a= 3.5, C=2600).
 
