@@ -20,13 +20,14 @@ nu = 0.000625
 Tend = 60
 dt = 0.01
 N_tsteps = ceil(Tend/dt)
-bool_percentile = 0.01
+bool_percentile = 0.02
 plotting = 'saveNumpy'
 IC = 'isotropic'
 L = 2*pi
 eta = 2*pi*((1/nu)**(-3/4))
-N = int(2 ** 5)
+N = int(2 ** 9)
 N_three = N**3
+force = 0.00078
 
 xticks = logspace(-1,0,4)
 yticks = logspace(1,-1,4)
@@ -50,7 +51,7 @@ if num_processes > 1:
     ############
     # USER CHOICE
     # Make sure this number is smaller than nr of core available.
-    P1 = 2
+    P1 = 32
     ############
 mpitype = MPI.DOUBLE_COMPLEX
 rank = comm.Get_rank()
@@ -79,7 +80,7 @@ K = array(meshgrid(kx[k2],kx,kx[k1],indexing='ij'),dtype=int)
 kx_single = fftfreq(N, 1. / N)
 K_single = array(meshgrid(kx,kx, kz, indexing='ij'), dtype=int)
 K2_single = sum(K_single * K_single, 0, dtype=int)
-eps = 0
+eps = 1e-6
 kinBand = 1
 
 # Preallocate arrays, decomposed using a 2D-pencil approach
@@ -377,7 +378,7 @@ def initialize2(rank,K,dealias,K2,N,U_hat):
     ksq = where(ksq == 0, 1, ksq)
 
     C=10000
-    a=3.5
+    a=9.5
     Ek = (C*abs(k)*2*N_three/((2*pi)**3))*exp((-abs(kk))/(a**2))
     # theta1, theta2, phi, alpha and beta from [1]
     theta1, theta2, phi = random.sample(U_hat.shape) * 2j * pi
@@ -412,15 +413,15 @@ def initialize(rank,K,dealias,K2,N,U_hat):
     ksq = sqrt(k1**2+k2**2)
     ksq = where(ksq == 0, 1, ksq)
 
-    E0 = sqrt(9./11./kf*K2*(kf)**2)*k2_mask
+    E0 = sqrt(9./11./kf*K2/((kf)**2))*k2_mask
     E1 = sqrt(9./11./kf*(k/kf)**(-5./3.))*(1-k2_mask)
     Ek = E0 + E1
     # theta1, theta2, phi, alpha and beta from [1]
     theta1, theta2, phi = random.sample(U_hat.shape)*2j*pi
     alpha = sqrt(Ek/4./pi/kk)*exp(1j*theta1)*cos(phi)
     beta = sqrt(Ek/4./pi/kk)*exp(1j*theta2)*sin(phi)
-    U_hat[0] = (alpha*k*k2 + beta*k1*k3)/(k*ksq)*100
-    U_hat[1] = (beta*k2*k3 - alpha*k*k1)/(k*ksq)*100
+    U_hat[0] = (alpha*k*k2 + beta*k1*k3)/(k*ksq)
+    U_hat[1] = (beta*k2*k3 - alpha*k*k1)/(k*ksq)
     U_hat[2] = beta*ksq/k
 
 
@@ -429,11 +430,11 @@ def initialize(rank,K,dealias,K2,N,U_hat):
     # project to zero divergence
     U_hat[:] -= (K[0]*U_hat[0]+K[1]*U_hat[1]+K[2]*U_hat[2])*K_over_K2
 
-    '''
+
     energy = 0.5 * integralEnergy(comm,U_hat)
     U_hat *= sqrt(target / energy)
     energy= 0.5 * integralEnergy(comm,U_hat)
-    '''
+
     return U_hat
 
 def computeRHS(dU, rk):
@@ -453,7 +454,7 @@ def computeRHS(dU, rk):
 
 
     #TODO activate this source term
-    #dU += (eps*U_hat*k2_mask/(2*kinBand))
+    dU += (force*U_hat*k2_mask/(2*kinBand))
     return dU
 
 
@@ -502,6 +503,7 @@ if __name__ == '__main__':
         U_hat[:] = U_hat1[:]
 
 
+        '''
         energy_new = integralEnergy(comm, U_hat)
         energy_lower = integralEnergy(comm, U_hat * k2_mask)
         energy_upper = energy_new - energy_lower
@@ -513,8 +515,10 @@ if __name__ == '__main__':
         if rank == 0:
             print(energy_new)
         assert sqrt((energy_new - target_energy) ** 2) < 1e-7, sqrt((energy_new - target) ** 2)
-
-
+        '''
+        energy_new = integralEnergy(comm, U_hat)
+        if rank == 0:
+            print('\nEnergy in system:    '+str(energy_new),flush=True)
 
         for i in range(3):
             # Inverse Fourier transform after RK4 algorithm
@@ -526,14 +530,14 @@ if __name__ == '__main__':
                 u_reshaped = reshapeGathered(u_gathered,N,N1,N2,P1,P2,num_processes,method='concatenate')
                 nyquist, k, tke = compute_tke_spectrum(u_reshaped[0], u_reshaped[1], u_reshaped[2], True)
                 eps = dissipationLoop(k, nu, tke)
-                #print(eps)
+                print('\nDissipation:   '+str(eps),flush=True)
                 kinBand = BandEnergy(tke, kf)
                 kinTotal= BandEnergy(tke,k[-1])
                 if plotting == 'animation':
                     im = plt.imshow(u_reshaped[0][:,:,-1],cmap='jet', animated=True)
                     ims.append([im])
                 if plotting == 'plot':
-                    plt.imshow(u_reshaped[0][:,:,-1],cmap='jet')
+                    plt.imshow(u_reshaped[0][:,:,-1])
                     plt.pause(0.05)
                     #plt.pause(0.05)
                 if plotting == 'EnergyTotal':
@@ -550,13 +554,15 @@ if __name__ == '__main__':
                     plt.pause(0.05)
                 if plotting == 'spectrum':
                     #TODO plot the spectrum with k\eta such that the last place y-axis crosses, is at kolmogorov scale.
-                    plt.loglog(eta*k[1:-1], tke[1:-1]*(eps**(-2/3)), 'k-')
-                    plt.loglog(eta*k[1:-1], (k[1:-1] ** (-5 / 3))*(eps**(-2/3)), 'r--')
+                    plt.loglog(k[2:N_half], tke[2:-N_half]*(eps**(-2/3)), 'go')
+                    plt.loglog(k[2:N_half], (k[2:N_half] ** (-5 / 3))*(eps**(-2/3)), 'r--')
                     #plt.xticks(xticks)
                     #plt.yticks(yticks)
-                    plt.xlabel('Wave number, $k\eta$')
+                    plt.yscale('log')
+                    plt.ylim(ymin=(1e-18), ymax=1e3)
+                    plt.xlabel('Wave number, $k$')
                     plt.ylabel('Turbulent kinetic energy, $E(k)$')
-                    plt.legend(['$E(k)$,  t= %.2f' % (tstep / 100), '$Ck^{-5/3}$'], loc='upper right')
+                    plt.legend(['$E(k)$,  t= %.2f' % (tstep / 100), r'$\epsilon^{-2/3}k^{-5/3}$'], loc='upper right')
                     plt.pause(0.05)
                     plt.close()
                 if plotting == 'savefig':
