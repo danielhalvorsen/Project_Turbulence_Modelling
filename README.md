@@ -6,7 +6,7 @@
 <img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/iso512_niceEnergy.gif" width="350"/><img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/spectrum512_niceEnergy.gif" width="350"/>
 </p>
 <p align="center">
-3D-isotropic turbulence, N=512, Re=1600, T=44.
+3D-isotropic turbulence, N=512, Re=1600, T=60.
 </p>
 
 <p align="center">
