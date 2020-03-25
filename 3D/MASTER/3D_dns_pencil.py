@@ -2,6 +2,7 @@ from numpy import *
 from numpy.fft import fftfreq, fft, ifft, irfft2, fftn,fftshift,rfft,irfft
 from mpi4py import MPI
 import matplotlib.pyplot as plt
+from sys import getsizeof
 import matplotlib.animation as animation
 import time
 from Particle_mpi import Interpolator,Euler,periodicBC,plotScatter,particle_IC,trajectory
@@ -118,20 +119,23 @@ k2_mask = where(K2 <= kf**2, 1, 0)
 ## Define Particle parameters ##
 
 #############################################################################################################################################
-multipleNp = 500
+multipleNp = 400
 Np = num_processes*multipleNp
 ldx = L / N
-particle_X = zeros((N_tsteps+1,3,Np))
+#particle_X = zeros((N_tsteps+1,3,Np))
 par_Pos_init = particle_IC(Np,L)
+particle_save_array=None
+if rank==0:
+    particle_save_array = array([par_Pos_init.copy()])
 print('Shape of Par_Pos_init: '+str(shape(par_Pos_init)),flush=True)
-particle_X[0]=par_Pos_init
-print('Shape of particle_X: '+str(shape(particle_X)),flush=True)
+#particle_X[0]=par_Pos_init
+#print('Shape of particle_X: '+str(shape(particle_X)),flush=True)
 
-split_coordinates = array_split(particle_X,num_processes,axis=2)
+split_coordinates = array_split(par_Pos_init,num_processes,axis=1)
 print('Shape of split_coordinates: '+str(shape(split_coordinates)),flush=True)
 #particleData = empty((N_tsteps+1,3,))
-particleData = comm.scatter(split_coordinates,root=0)
-print('Shape of particleData: '+str(shape(particleData)),flush=True)
+particleData_old = comm.scatter(split_coordinates,root=0)
+print('Shape of particleData_old: '+str(shape(particleData_old)),flush=True)
 
 
 fig_particle = plt.figure()
@@ -165,6 +169,7 @@ def transform_Uc_xy(Uc_hat_x, Uc_hat_y, P):
 
 
 def ifftn_mpi(fu,u):
+    #TODO fix buffer error for np=1
     Uc_hat_y = work_array[((N2, N, int(N1/2)),complex, 0, False)]
     Uc_hat_z = work_array[((N1, N2, N_nyquist), complex, 0, False)]
 
@@ -241,15 +246,6 @@ def reshapeGathered(u_gathered,N,N1,N2,P1,P2,num_processes,method):
             first_concat = concatenate(store_vector,axis=2)
             second_concat = concatenate(first_concat,axis=2)
             u_reshaped = second_concat
-    # new vector = concatenate((vec1,vec2,vec3,---),axis=..)
-    # u_gathered has shape (N_process,3,N/N1,N/N2,N)
-    # P1 = 2
-    # P2 = num_process/P1
-    # N1 = N/P1 = N/2 = 8
-    # N2 = N/P2 = 2*N/num_process = 8
-    # we want shape (3,N,N,N)
-    # need to loop over number of processes and concatenate in x-direction
-    # P1 times, and in y-direction P2
     return u_reshaped
 
 
@@ -573,7 +569,7 @@ def oldEnergyUpdate():
     assert sqrt((energy_new - target_energy) ** 2) < 1e-7, sqrt((energy_new - target) ** 2)
     '''
     return 0
-def compueParticle(tstep,U,num_processes):
+def compueParticle(U,num_processes,particleData_old):
     #todo implement multiprocess for trajectory
     u_gathered = comm.gather(U, root=0)
     if rank == 0:
@@ -582,12 +578,20 @@ def compueParticle(tstep,U,num_processes):
         u_reshaped = None
     u_reshaped = comm.bcast(u_reshaped, root=0)
     f = Interpolator(u_reshaped)
-    particleData[tstep+1,:] = trajectory(t0, Tend, h, f, Euler,True,L,ldx,particleData[tstep,:])
-def saveParticleCoord():
-    particleX_full = comm.gather(particleData, root=0)
+    particleData_new = trajectory(t0, Tend, h, f, Euler,True,L,ldx,particleData_old)
+
+    return particleData_new
+
+
+def saveParticleCoord(particleData_new,particle_save_array,tstep):
+    particleData_new_gathered = comm.gather(particleData_new, root=0)
     if rank == 0:
-        particleX_reshaped = concatenate(particleX_full, axis=2)
-        save('particleCoord.npy', particleX_reshaped)
+        particleData_new_reshaped = array([concatenate(particleData_new_gathered, axis=1)])
+        particle_save_array= concatenate((particle_save_array,particleData_new_reshaped),axis=0)
+        if (tstep%50==0):
+            save('particleCoord.npy', particle_save_array)
+            print('save at tstep: '+str(tstep),flush=True)
+        return particle_save_array
 
 if __name__ == '__main__':
     # initial condition and transformation to Fourier space
@@ -608,7 +612,7 @@ if __name__ == '__main__':
     energyarrayKf = []
     energyarrayKin = []
     plot_step = N_tsteps*bool_percentile
-    fig = plt.figure()
+    #fig = plt.figure()
     ims = []
     mid_idx = int(N / 2)
     try:
@@ -633,20 +637,27 @@ if __name__ == '__main__':
 
         U_hat[:] = U_hat1[:]
 
-
-
-
         for i in range(3):
             # Inverse Fourier transform after RK4 algorithm
             U[i] = ifftn_mpi(U_hat[i], U[i])
 
+
+
         dynamicPostProcess(tstep,plot_step)
-        compueParticle(tstep,U,num_processes)
+        particleData_new = compueParticle(U,num_processes,particleData_old)
+        particleData_old = particleData_new
+        particle_save_array = saveParticleCoord(particleData_new, particle_save_array, tstep)
+
+
         tstep += 1
         mpiPrintIteration(tstep)
+
+
         try:
             pbar.update(1)
         except:
             pass
-
-    saveParticleCoord()
+    # Add extra save to account for last timestep
+    if rank ==0:
+        save('particleCoord.npy', particle_save_array)
+        print('saved last timestep',flush=True)
