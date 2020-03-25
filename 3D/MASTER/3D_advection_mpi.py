@@ -36,21 +36,7 @@ dz2 = dz ** 2
 r = dt * D / (dx ** 2)
 assert (0 < 2 * r <= 0.5), ('N too high. Reduce time step to uphold stability')
 timesteps = int(np.ceil(tend / dt))
-load_every = 0.01*timesteps
-breaker = load_every
-image_interval = timesteps * 0.05  # Write frequency for png files
-field_store_counter=0
 
-
-filenames_u = ['datafiles/u/u_vel_t_0.npy']
-filenames_v = ['datafiles/v/v_vel_t_0.npy']
-
-for i in range(1,int(timesteps/load_every)+1):
-    filenames_u.append('datafiles/u/u_vel_t_'+str(i)+'.npy')
-    filenames_v.append('datafiles/v/v_vel_t_'+str(i)+'.npy')
-
-
-print('finished loading file names')
 
 x = np.arange(0, N, 1) * L / N
 y = np.arange(0, N, 1) * L / N
