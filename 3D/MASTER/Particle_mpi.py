@@ -38,9 +38,12 @@ class Interpolator():
         self.y_vec = np.arange(0, self.N, 1) * self.L / self.N
         self.z_vec = np.arange(0, self.N, 1) * self.L / self.N
 
-    def get_interpolators(self, X):
+    def get_interpolators(self, X,t):
         # Add a buffer of cells around the extent of the particle cloud
-        buf = 0
+        if t<100:
+            buf = 3
+        else:
+            buf=0
         # Find extent of particle cloud in terms of indices
         imax = np.searchsorted(self.x_vec, np.amax(X[0, :])) + buf
         imin = np.searchsorted(self.x_vec, np.amin(X[0, :])) - buf
@@ -55,14 +58,18 @@ class Interpolator():
         u = self.dataset[0, imin:imax, jmin:jmax,kmin:kmax]
         v = self.dataset[1, imin:imax, jmin:jmax,kmin:kmax]
         w = self.dataset[2, imin:imax, jmin:jmax, kmin:kmax]
+        self.dataset=None
         xslice = self.x_vec[imin:imax]
         yslice = self.y_vec[jmin:jmax]
         zslice = self.z_vec[kmin:kmax]
         # RectBivariateSpline returns a function-like object,
         # which can be called to get value at arbitrary position
         fu = RegularGridInterpolator((xslice,yslice,zslice),u,method='linear',bounds_error=False,fill_value=None)
+        del(u)
         fv = RegularGridInterpolator((xslice,yslice,zslice),v,method='linear',bounds_error=False,fill_value=None)
+        del(v)
         fw = RegularGridInterpolator((xslice,yslice,zslice),w,method='linear',bounds_error=False,fill_value=None)
+        del(w)
         return fu, fv, fw
 
     def __call__(self, X,t):
@@ -72,14 +79,17 @@ class Interpolator():
         # get index of current time in dataset
         # get interpolating functions,
         # covering the extent of the particle
-        fu, fv, fw = self.get_interpolators(X)
+        fu, fv, fw = self.get_interpolators(X,t)
         # Evaluate velocity at position(x[:], y[:])
         X = X.transpose()
 
 
         vx = fu(X)
+        del(fu)
         vy = fv(X)
+        del(fv)
         vz = fw(X)
+        del(fw)
         return np.array([vx, vy, vz])
 
 
@@ -128,7 +138,10 @@ def Euler(x, t, h, f):
     # convert to number of seconds:
     dt = h
     # Calculate next position
+    #TODO find way to use this variable only once
+    Np = np.shape(x)[1]
     x_ = x + dt * f(x, t)
+    x_ += np.random.normal(loc=0,scale=np.sqrt(dt),size=(3,Np))*np.sqrt(2*0.0005)
     return x_
 
 
@@ -162,20 +175,26 @@ def plotScatter(fig_particle,ax_particle,i,X,rgbaTuple,pointSize,L,pointcolor1,p
         tck.FuncFormatter(lambda val, pos: '{:.0g}$\pi$'.format(val / np.pi) if val != 0 else '0'))
     ax_particle.zaxis.set_major_locator(tck.MultipleLocator(base=np.pi))
 
-    plt.pause(0.05)
+    #plt.pause(0.05)
+    plt.savefig('./Particle_plots/test_'+str(i),dpi=600)
     ax_particle.clear()
 
-def particle_IC(Np,L):
+def particle_IC(Np,L,choice):
+    if choice=='random two slots':
+        Np_int = int(Np / 2)
+        par_Pos_init = np.zeros((3, Np))
+        par_Pos_init[0, 0:Np_int] = np.random.uniform(L / 2 - L / 3, L / 2 - L / 3.5, size=Np_int)
+        par_Pos_init[1, 0:Np_int] = np.random.uniform(L / 2 - L / 3, L / 2 - L / 3.5, size=Np_int)
+        par_Pos_init[2, 0:Np_int] = np.random.uniform(L / 2 - L / 3, L / 2 - L / 3.5, size=Np_int)
 
-    Np_int = int(Np / 2)
-    par_Pos_init = np.zeros((3, Np))
-    par_Pos_init[0, 0:Np_int] = np.random.uniform(L / 2 - L / 3, L / 2 - L / 3.5, size=Np_int)
-    par_Pos_init[1, 0:Np_int] = np.random.uniform(L / 2 - L / 3, L / 2 - L / 3.5, size=Np_int)
-    par_Pos_init[2, 0:Np_int] = np.random.uniform(L / 2 - L / 3, L / 2 - L / 3.5, size=Np_int)
-
-    par_Pos_init[0, Np_int:] = np.random.uniform(L / 2 + L / 3, L / 2 + L / 3.5, size=Np_int)
-    par_Pos_init[1, Np_int:] = np.random.uniform(L / 2 + L / 3, L / 2 + L / 3.5, size=Np_int)
-    par_Pos_init[2, Np_int:] = np.random.uniform(L / 2 + L / 3, L / 2 + L / 3.5, size=Np_int)
+        par_Pos_init[0, Np_int:] = np.random.uniform(L / 2 + L / 3, L / 2 + L / 3.5, size=Np_int)
+        par_Pos_init[1, Np_int:] = np.random.uniform(L / 2 + L / 3, L / 2 + L / 3.5, size=Np_int)
+        par_Pos_init[2, Np_int:] = np.random.uniform(L / 2 + L / 3, L / 2 + L / 3.5, size=Np_int)
+    if choice=='middlePoint':
+        par_Pos_init = np.zeros((3, Np))
+        par_Pos_init[0, :] = L/2
+        par_Pos_init[1, :] = L/2
+        par_Pos_init[2, :] = L/2
     return par_Pos_init
 
 def trajectory(t0, Tmax, h, f, integrator,dynamicField,L,ldx,X0):
