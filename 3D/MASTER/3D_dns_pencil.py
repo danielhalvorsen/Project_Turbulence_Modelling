@@ -2,6 +2,8 @@ from numpy import *
 from numpy.fft import fftfreq, fft, ifft, irfft2, fftn,fftshift,rfft,irfft
 from mpi4py import MPI
 import matplotlib.pyplot as plt
+import resource
+import sys
 from sys import getsizeof
 import matplotlib.animation as animation
 import time
@@ -21,7 +23,7 @@ work_array = work_arrays()
 
 #############################################################################################################################################
 nu = 0.000625
-Tend = 10
+Tend = 80
 dt = 0.01
 N_tsteps = int(ceil(Tend/dt))
 bool_percentile = 0.02
@@ -50,6 +52,7 @@ P1 = 1
 # Initialize MPI communication and set number of processes along each axis.
 comm = MPI.COMM_WORLD
 num_processes = comm.Get_size()
+#assert (num_processes>5 and N>int(2**8)),('These parameters will occupy all of your computers memory..')
 if num_processes > 1:
     ############
     # USER CHOICE
@@ -80,10 +83,11 @@ k2 = slice(int(xyrank*N2),int((xyrank+1)*N2),1)
 k1 = slice(int(xzrank*N1/2),int(xzrank*N1/2 + N1/2),1)
 K = array(meshgrid(kx[k2],kx,kx[k1],indexing='ij'),dtype=int)
 
-kx_single = fftfreq(N, 1. / N)
-K_single = array(meshgrid(kx,kx, kz, indexing='ij'), dtype=int)
-K2_single = sum(K_single * K_single, 0, dtype=int)
+#kx_single = fftfreq(N, 1. / N)
+#K_single = array(meshgrid(kx,kx, kz, indexing='ij'), dtype=int)
+#K2_single = sum(K_single * K_single, 0, dtype=int)
 eps = 1e-6
+global kinBand
 kinBand = 1
 
 # Preallocate arrays, decomposed using a 2D-pencil approach
@@ -119,31 +123,29 @@ k2_mask = where(K2 <= kf**2, 1, 0)
 ## Define Particle parameters ##
 
 #############################################################################################################################################
-multipleNp = 400
-Np = num_processes*multipleNp
+#multipleNp = 250
+#Np = num_processes*multipleNp
+Np = 80000
 ldx = L / N
-#particle_X = zeros((N_tsteps+1,3,Np))
-par_Pos_init = particle_IC(Np,L)
-particle_save_array=None
+particle_diffusion= 0.0005
+#par_Pos_init = particle_IC(Np,L)
+#particle_save_array=None
+#split_coordinates = None
 if rank==0:
+    par_Pos_init = particle_IC(Np, L,'middlePoint')
+    particleData_old = par_Pos_init
     particle_save_array = array([par_Pos_init.copy()])
-print('Shape of Par_Pos_init: '+str(shape(par_Pos_init)),flush=True)
-#particle_X[0]=par_Pos_init
-#print('Shape of particle_X: '+str(shape(particle_X)),flush=True)
+    #split_coordinates = array_split(par_Pos_init, num_processes, axis=1)
 
-split_coordinates = array_split(par_Pos_init,num_processes,axis=1)
-print('Shape of split_coordinates: '+str(shape(split_coordinates)),flush=True)
-#particleData = empty((N_tsteps+1,3,))
-particleData_old = comm.scatter(split_coordinates,root=0)
-print('Shape of particleData_old: '+str(shape(particleData_old)),flush=True)
-
+#particleData_old = comm.scatter(split_coordinates,root=0)
 
 fig_particle = plt.figure()
 ax_particle = fig_particle.add_subplot(111, projection='3d')
-pointSize = 0.1
+pointSize = 0.001
 pointcolor1 = 'r'
 pointcolor2 = 'm'
 rgbaTuple = (167/255, 201/255, 235/255)
+
 
 #TODO wont need Tmax unless we collect new velocity field every time step.
 h  = dt
@@ -245,6 +247,7 @@ def reshapeGathered(u_gathered,N,N1,N2,P1,P2,num_processes,method):
 
             first_concat = concatenate(store_vector,axis=2)
             second_concat = concatenate(first_concat,axis=2)
+            del(first_concat) #free memory
             u_reshaped = second_concat
     return u_reshaped
 
@@ -490,66 +493,66 @@ def computeRHS(dU, rk):
 
     curl[:] = compute_curl(curl, U_hat, work_array, K)
     dU = Cross_T(dU, U, curl, work_array)
-
     dU *= dealias
     P_hat[:] = sum(dU * K_over_K2, 0, out=P_hat)
     dU -= P_hat * K
     dU -= nu * K2 * U_hat
 
-
-    #TODO activate this source term
     dU += (force*U_hat*k2_mask/(2*kinBand))
+    #if rank==0:
+        #print('Energy in forcing band: '+str(kinBand))
     return dU
-def dynamicPostProcess(tstep,plot_step):
+
+
+def dynamicPostProcess(tstep,plot_step,u_reshaped):
+    global kinBand
     if tstep % plot_step == 0:
-        energy_new = integralEnergy(comm, U_hat)
-        if rank == 0:
-            print('\nEnergy in system:    ' + str(energy_new), flush=True)
-        u_gathered = comm.gather(U, root=0)
-        if rank == 0:
-            u_reshaped = reshapeGathered(u_gathered, N, N1, N2, P1, P2, num_processes, method='concatenate')
-            nyquist, k, tke = compute_tke_spectrum(u_reshaped[0], u_reshaped[1], u_reshaped[2], True)
-            eps = dissipationLoop(k, nu, tke)
-            print('\nDissipation:   ' + str(eps), flush=True)
-            kinBand = BandEnergy(tke, kf)
-            kinTotal = BandEnergy(tke, k[-1])
-            if plotting == 'animation':
-                im = plt.imshow(u_reshaped[0][:, :, -1], cmap='jet', animated=True)
-                ims.append([im])
-            if plotting == 'plot':
-                plt.imshow(u_reshaped[0][:, :, -1])
-                plt.pause(0.05)
-                # plt.pause(0.05)
-            if plotting == 'EnergyTotal':
-                energyarrayKin.append(kinTotal)
-                plt.plot(t_array[0:len(energyarrayKin)] * (plot_step), energyarrayKin, 'r--')
-                plt.xlabel('Time, (s)')
-                plt.ylabel('$E_{kin}$')
-                plt.pause(0.05)
-            if plotting == 'EnergyKf':
-                energyarrayKf.append(tke[kf])
-                plt.plot(t_array[0:len(energyarrayKf)] * (plot_step), energyarrayKf, 'r--')
-                plt.xlabel('Time, (s)')
-                plt.ylabel('E(kf)')
-                plt.pause(0.05)
-            if plotting == 'spectrum':
-                # TODO plot the spectrum with k\eta such that the last place y-axis crosses, is at kolmogorov scale.
-                plt.loglog(k[1:N_half], tke[1:N_half] * (eps ** (-2 / 3)), 'g.', 'markerSize=2')
-                plt.loglog(k[1:N_half], (k[1:N_half] ** (-5 / 3)) * (eps ** (-2 / 3)), 'r--')
-                plt.yscale('log')
-                plt.ylim(ymin=(1e-18), ymax=1e3)
-                plt.xlabel('Wave number, $k$')
-                plt.ylabel('Turbulent kinetic energy, $E(k)$')
-                plt.legend(['$E(k)$,  t= %.2f' % (tstep / 100), r'$\epsilon^{-2/3}k^{-5/3}$'], loc='lower left')
-                plt.pause(0.05)
-                plt.close()
-            if plotting == 'savefig':
-                plt.imshow(u_reshaped[0][:, :, -1], cmap='jet')
-                plt.savefig('images/turb_t_' + str(int(tstep)))
-            if plotting == 'noFigure':
-                print('next iteration')
-            if plotting == 'saveNumpy':
-                save('vel_files_iso/velocity_' + str(tstep) + '.npy', u_reshaped)
+        nyquist, k, tke = compute_tke_spectrum(u_reshaped[0], u_reshaped[1], u_reshaped[2], True)
+        eps = dissipationLoop(k, nu, tke)
+        print('\nDissipation:   ' + str(eps), flush=True)
+        kinBand = BandEnergy(tke, kf)
+        print('Energy in forcing band: '+str(kinBand))
+        kinTotal = BandEnergy(tke, k[-1])
+        print('Energy in total band: '+str(kinTotal))
+        if plotting == 'animation':
+            im = plt.imshow(u_reshaped[0][:, :, -1], cmap='jet', animated=True)
+            ims.append([im])
+        if plotting == 'plot':
+            plt.imshow(u_reshaped[0][:, :, -1])
+            plt.pause(0.05)
+            # plt.pause(0.05)
+        if plotting == 'EnergyTotal':
+            energyarrayKin.append(kinTotal)
+            plt.plot(t_array[0:len(energyarrayKin)] * (plot_step), energyarrayKin, 'r--')
+            plt.xlabel('Time, (s)')
+            plt.ylabel('$E_{kin}$')
+            plt.pause(0.05)
+        if plotting == 'EnergyKf':
+            energyarrayKf.append(tke[kf])
+            plt.plot(t_array[0:len(energyarrayKf)] * (plot_step), energyarrayKf, 'r--')
+            plt.xlabel('Time, (s)')
+            plt.ylabel('E(kf)')
+            plt.pause(0.05)
+        if plotting == 'spectrum':
+            # TODO plot the spectrum with k\eta such that the last place y-axis crosses, is at kolmogorov scale.
+            plt.loglog(k[1:N_half], tke[1:N_half] * (eps ** (-2 / 3)), 'g.', 'markerSize=2')
+            plt.loglog(k[1:N_half], (k[1:N_half] ** (-5 / 3)) * (eps ** (-2 / 3)), 'r--')
+            plt.yscale('log')
+            plt.ylim(ymin=(1e-18), ymax=1e3)
+            plt.xlabel('Wave number, $k$')
+            plt.ylabel('Turbulent kinetic energy, $E(k)$')
+            plt.legend(['$E(k)$,  t= %.2f' % (tstep / 100), r'$\epsilon^{-2/3}k^{-5/3}$'], loc='lower left')
+            plt.pause(0.05)
+            plt.close()
+        if plotting == 'savefig':
+            plt.imshow(u_reshaped[0][:, :, -1], cmap='jet')
+            plt.savefig('images/turb_t_' + str(int(tstep)))
+        if plotting == 'noFigure':
+            print('next iteration')
+        if plotting == 'saveNumpy':
+            save('vel_files_iso/velocity_' + str(tstep) + '.npy', u_reshaped)
+
+
 def mpiPrintIteration(tstep):
     if rank == 0:
         # progressfile.write("tstep= %d\r\n" % (tstep),flush=True)
@@ -569,29 +572,50 @@ def oldEnergyUpdate():
     assert sqrt((energy_new - target_energy) ** 2) < 1e-7, sqrt((energy_new - target) ** 2)
     '''
     return 0
-def compueParticle(U,num_processes,particleData_old):
-    #todo implement multiprocess for trajectory
-    u_gathered = comm.gather(U, root=0)
-    if rank == 0:
-        u_reshaped = reshapeGathered(u_gathered, N, N1, N2, P1, P2, num_processes, 'concatenate')
-    else:
-        u_reshaped = None
-    u_reshaped = comm.bcast(u_reshaped, root=0)
-    f = Interpolator(u_reshaped)
-    particleData_new = trajectory(t0, Tend, h, f, Euler,True,L,ldx,particleData_old)
 
+def computeParticle(u_reshaped,particleData_old,tstep):
+    '''
+    if rank==0:
+        print('before broadcasting u_reshaped',flush=True)
+    u_reshaped = comm.bcast(u_reshaped, root=0)
+    if rank==0:
+        print('after broadcasting u_reshaped',flush=True)
+    '''
+    f = Interpolator(u_reshaped)
+    #del(u_reshaped)
+    particleData_new = trajectory(tstep, Tend, h, f, Euler,True,L,ldx,particleData_old)
+    #del(f)
     return particleData_new
 
 
-def saveParticleCoord(particleData_new,particle_save_array,tstep):
+def saveParticleCoord_MPI(particleData_new,particle_save_array,tstep):
     particleData_new_gathered = comm.gather(particleData_new, root=0)
     if rank == 0:
         particleData_new_reshaped = array([concatenate(particleData_new_gathered, axis=1)])
+        del(particleData_new_gathered)
         particle_save_array= concatenate((particle_save_array,particleData_new_reshaped),axis=0)
         if (tstep%50==0):
             save('particleCoord.npy', particle_save_array)
             print('save at tstep: '+str(tstep),flush=True)
         return particle_save_array
+
+def saveParticleCoord(particleData_new,particle_save_array,tstep):
+    particle_save_array= concatenate((particle_save_array,array([particleData_new])),axis=0)
+    if (tstep%50==0):
+        #TODO implement feature that makes new save array after some tstep, to reduce size of numpy file
+        save('particleCoord.npy', particle_save_array)
+        print('save at tstep: '+str(tstep),flush=True)
+    return particle_save_array
+
+
+def memory_usage_resource():
+    import resource
+    rusage_denom = 1024.
+    if sys.platform == 'darwin':
+        # ... it seems that in OSX the output is different units ...
+        rusage_denom = rusage_denom * rusage_denom
+    mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / rusage_denom
+    return mem
 
 if __name__ == '__main__':
     # initial condition and transformation to Fourier space
@@ -605,6 +629,7 @@ if __name__ == '__main__':
         U[2] = 0
         for i in range(3):
             U_hat[i] = fftn_mpi(U[i], U_hat[i])
+    del(X)
     target_energy = integralEnergy(comm,U_hat)
     t = 0.0
     tstep = 0
@@ -642,13 +667,17 @@ if __name__ == '__main__':
             U[i] = ifftn_mpi(U_hat[i], U[i])
 
 
-
-        dynamicPostProcess(tstep,plot_step)
-        particleData_new = compueParticle(U,num_processes,particleData_old)
-        particleData_old = particleData_new
-        particle_save_array = saveParticleCoord(particleData_new, particle_save_array, tstep)
-
-
+        u_gathered = comm.gather(U,root=0)
+        u_reshaped=None
+        if rank==0:
+            u_reshaped = reshapeGathered(u_gathered,N,N1,N2,P1,P2,num_processes,'concatenate')
+            particleData_new = computeParticle(u_reshaped,particleData_old,tstep)
+            particleData_old = particleData_new
+            particle_save_array = saveParticleCoord(particleData_new, particle_save_array, tstep)
+            dynamicPostProcess(tstep,plot_step,u_reshaped)
+            #if tstep%10==0:
+                #plotScatter(fig_particle, ax_particle, tstep, particle_save_array, rgbaTuple, pointSize, L, pointcolor1, pointcolor2, Np)
+        kinBand = comm.bcast(kinBand,root=0)
         tstep += 1
         mpiPrintIteration(tstep)
 
