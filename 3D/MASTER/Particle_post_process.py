@@ -98,12 +98,13 @@ if __name__ == '__main__':
     rgbaTuple = (167 / 255, 201 / 255, 235 / 255)
     L = 2*np.pi
     ims = []
-
-    dataset = np.load('particleCoord_t10.npy')
+    print('loading dataset..')
+    dataset = np.load('particleCoord_splitIC_4250.npy')
+    print('finished loading dataset..')
     dataset_shape = np.shape(dataset)
     timesteps = dataset_shape[0]
     Np = dataset_shape[2]
 
-    for i in range(0,timesteps,20):
+    for i in range(0,timesteps,40):
         plotScatter(fig_particle,ax_particle,i,dataset,rgbaTuple,pointSize,L,pointcolor1,pointcolor2,Np)
         print(i)
