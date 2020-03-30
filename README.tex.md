@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-<img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/Particle4600.gif" width="500"/>
+<img src="https://github.com/danielhalvorsen/Project_Turbulence_Modelling/blob/master/animation_folder/3D/Particle_6550.gif" width="500"/>
 </p>
 <p align="center">
 Particle distribution in a 3D-isotropic turbulence, N=512, Re=1600, Tmax = 46 seconds.
