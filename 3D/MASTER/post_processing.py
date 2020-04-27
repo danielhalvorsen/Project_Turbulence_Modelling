@@ -5,9 +5,11 @@ from numpy.fft import fftfreq, fft, ifft, irfft2, fftn,fftshift,rfft,irfft
 import time
 from numpy import sqrt, zeros, conj, pi, arange, ones, convolve
 from matplotlib.ticker import ScalarFormatter
+import pickle
 from numba import jit
-from mpistuff.mpibase import work_arrays
+from MPI_func.mpibase import work_arrays
 work_array = work_arrays()
+plt.style.use('bmh')
 
 
 
@@ -72,19 +74,19 @@ def dissipationComputation(a, work, K,nu):
     dissipation = integralDissipation(curl_hat)
     return dissipation*nu
 
-def dissipationComputation(b, work, K,nu):
+def dissipationComputation2(b, work, K,nu):
     """c = curl(a) = F_inv(F(curl(a))) = F_inv(1j*K x a)"""
     uh = fftn(b[0])/N_three
     vh = fftn(b[1])/N_three
     wh = fftn(b[2])/N_three
-    tmp = array([uh,vh,wh])
+    tmp = np.array([uh,vh,wh])
 
     curl_hat = work[(tmp, 0, False)]
     curl_hat = cross2a(curl_hat, K, tmp)
     #c[0] = ifft(curl_hat[0])
     #c[1] = ifft(curl_hat[1])
     #c[2] = ifft(curl_hat[2])
-    dissipation = integralEnergy(comm,curl_hat)
+    dissipation = integralEnergy(curl_hat)
     return dissipation*nu
 
 @jit(nopython=True,parallel=True)
@@ -301,10 +303,6 @@ def spectrum(length,u,v,w):
     #fig.savefig(Figs_Path + Fig_file_name + '.pdf')
     return fig2
 
-#TODO make spectrum plots animated and add to github
-
-
-
 
 fig, ax = plt.subplots()
 
@@ -315,14 +313,16 @@ xticks = np.logspace(0,2,7)
 yticks = np.logspace(1,-13,5)
 N=512
 N_half = int(N/2)
+N_three = N**3
 kf = 8
 nu = 1/1600
-amount = 50
-name = 'vel_files_iso/velocity_'+str(step)+'.npy'
-plot = 'spectrum2'
+amount = 1
+name = 'vel_files/velocity_'+str(step)+'.npy'
+plot = 'dissipation'
 counter =0
 dissipationArray = np.zeros((amount))
-stepjump = 120
+#TODO make stepjump dynamic depending on the name of the files in the folder
+stepjump = 140
 timearray = np.arange(0,(amount*100),stepjump)/100
 energyarrayKf = []
 energyarrayKin = []
@@ -335,7 +335,9 @@ if runLoop == True:
     K2 = np.sum(K * K, 0, dtype=int)
     #TODO load in one and one file from /vel_files, read [0][:,:,-1] and add to animation. Also make spectrum plots and viscous diffusion plots
     for i in range(amount):
-        name = 'vel_files_iso/velocity_' + str(step) + '.npy'
+        #name = 'vel_files/velocity_' + str(step) + '.npy'
+        name = './Post_processing/single_vel_files/TG/velocity_0.npy'
+
         vec = np.load(name)
         print('Loaded nr: '+str(step),flush=True)
         if plot == 'plotVelocity':
@@ -357,6 +359,8 @@ if runLoop == True:
             kinTotal = BandEnergy(tke, k[-1])
             #energyarrayKin.append(kinBand)
             #plt.plot(timearray[0:len(energyarrayKin)] , energyarrayKin, 'r--')
+            np.save('./spectrum_data/wave_numbers_'+str(step)+'.npy',k)
+            np.save('./spectrum_data/TKE'+str(step)+'.npy',tke)
 
 
             plt.loglog(k[1:N_half],tke[1:N_half],'g.','markerSize=2')
@@ -369,7 +373,9 @@ if runLoop == True:
             plt.ylabel('Turbulent kinetic energy, $E(k)$')
             plt.legend(['$E(k)$,  t= %.2f'%(step/100), r'$\epsilon^{-2/3}k^{-5/3}$'],loc='lower left')
 
-            plt.savefig('spectrum_plots/spectrum_'+str(step))
+            #plt.savefig('spectrum_plots/spectrum_'+str(step))
+            plt.savefig('spectrum_plots/spectrum_TG_0.png',dpi=1000)
+
             plt.clf()
         if plot == 'dissipation':
             Nt = N**3
@@ -379,12 +385,10 @@ if runLoop == True:
             u_hat = np.array([uh,vh,wh])
             dissipationArray[counter]= dissipationComputation(u_hat,work_array,K,nu)
             counter +=1
-
-
+            np.save('dissipation.npy', dissipationArray)
 
         step += stepjump
         print('Finished appending nr: '+str(step),flush=True)
-    np.save('dissipation.npy',dissipationArray)
     plt.plot(timearray,dissipationArray)
 
 
@@ -394,8 +398,17 @@ if runLoop == True:
         ani.save('spectrum.gif', writer='imagemagick')
     '''
 else:
-    dissipation = np.load('dissipation.npy')
-    plt.plot(timearray,dissipation,'k-')
-    plt.xlabel('Time (s)')
-    plt.ylabel(r'Enstrophy, $\epsilon$  ($\frac{m^2}{s^2}$)')
-    plt.savefig('dissipation')
+    dissipation = np.load('./Post_processing/dissipation.npy')
+
+
+    f = open('./Post_processing/spectral_Re1600_512.txt',"r")
+    #print(f.read(100))
+    a = np.genfromtxt('./Post_processing/spectral_Re1600_512.txt', delimiter=" ", dtype=None)
+
+    plt.plot(timearray[0:len(dissipation)],dissipation,'k-',linewidth=0.7,label=r'$\mathrm{Taylor-Green \; dissipation}$')
+    plt.plot(a[:,0],a[:,2],color='b',linestyle=(0,(3,1,1,1)),linewidth=0.7,label=r'$\mathrm{NASA.gov \;reference\; data}$')
+    plt.xlabel('$\mathrm{Time \;(s)}$')
+    plt.ylabel(r'$\epsilon$ $\mathrm{\;}$($\frac{m^2}{s^2}$)')
+    plt.legend()
+    #plt.show()
+    plt.savefig('./Post_processing/dissipation.png',dpi=1000)

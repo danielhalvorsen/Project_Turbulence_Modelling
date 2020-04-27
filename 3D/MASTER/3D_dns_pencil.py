@@ -13,7 +13,7 @@ try:
     from tqdm import tqdm
 except ImportError:
     pass
-from mpistuff.mpibase import work_arrays
+from MPI_func.mpibase import work_arrays
 work_array = work_arrays()
 
 #TODO Make nice comments on all the functions and different parts of the script
