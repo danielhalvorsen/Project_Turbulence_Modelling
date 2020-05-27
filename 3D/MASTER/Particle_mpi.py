@@ -195,6 +195,13 @@ def particle_IC(Np,L,choice):
         par_Pos_init[0, :] = L/2
         par_Pos_init[1, :] = L/2
         par_Pos_init[2, :] = L/2
+    if choice =='midNormal':
+        variance = 0.01
+        standarddev = np.sqrt(variance)
+        par_Pos_init = np.zeros((3, Np))
+        par_Pos_init[0, :] = np.random.normal(np.pi,standarddev , size=Np)
+        par_Pos_init[1, :] = np.random.normal(np.pi, standarddev, size=Np)
+        par_Pos_init[2, :] = np.random.normal(np.pi,standarddev , size=Np)
     return par_Pos_init
 
 def trajectory(t0, Tmax, h, f, integrator,dynamicField,L,ldx,X0):
